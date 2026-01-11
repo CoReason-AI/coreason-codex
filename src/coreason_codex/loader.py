@@ -107,8 +107,28 @@ class CodexLoader:
 
         for filename, expected_hash in self.manifest.checksums.items():
             file_path = self.pack_path / filename
+
+            # Security checks
+            # 1. Prevent path traversal
+            try:
+                # Resolve path and check if it is relative to pack root
+                resolved_path = file_path.resolve()
+                pack_root = self.pack_path.resolve()
+                if not resolved_path.is_relative_to(pack_root):
+                    raise ValueError(f"Security Violation: Path traversal detected in {filename}")
+            except Exception as e:
+                # Check specifically if validation failed or some other error
+                if "Security Violation" in str(e):
+                    raise
+                # Fallback for weird path issues
+                raise ValueError(f"Invalid path for artifact {filename}: {e}") from e
+
             if not file_path.exists():
                 raise FileNotFoundError(f"Artifact not found: {filename}")
+
+            # 2. Disallow symlinks
+            if file_path.is_symlink():
+                raise ValueError(f"Security Violation: Symlinks not allowed for artifact {filename}")
 
             calculated_hash = self._compute_sha256(file_path)
             if calculated_hash != expected_hash:
@@ -130,11 +150,21 @@ class CodexLoader:
         # Load DuckDB
         duckdb_path = self.pack_path / "vocab.duckdb"
         logger.info(f"Connecting to DuckDB at {duckdb_path}")
-        con = duckdb.connect(str(duckdb_path), read_only=True)
+        try:
+            con = duckdb.connect(str(duckdb_path), read_only=True)
+            # Verify it's a valid DB by running a simple query
+            con.execute("SELECT 1")
+        except Exception as e:
+            logger.error(f"Failed to connect to DuckDB: {e}")
+            raise ValueError(f"Failed to initialize DuckDB connection: {e}") from e
 
         # Load LanceDB
         # Connecting to the pack directory, assuming vectors are there
         logger.info(f"Connecting to LanceDB at {self.pack_path}")
-        lance_db = lancedb.connect(str(self.pack_path))
+        try:
+            lance_db = lancedb.connect(str(self.pack_path))
+        except Exception as e:
+            logger.error(f"Failed to connect to LanceDB: {e}")
+            raise ValueError(f"Failed to initialize LanceDB connection: {e}") from e
 
         return con, lance_db

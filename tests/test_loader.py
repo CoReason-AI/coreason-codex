@@ -10,6 +10,7 @@
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -171,3 +172,82 @@ def test_loader_pack_not_found(tmp_path: Path) -> None:
     """Test initializing loader with non-existent path."""
     with pytest.raises(FileNotFoundError, match="Codex Pack not found"):
         CodexLoader(tmp_path / "non_existent")
+
+
+def test_path_traversal(codex_pack: Path) -> None:
+    """Test that path traversal in manifest is detected."""
+    # Create a file outside
+    outside_file = codex_pack.parent / "evil.txt"
+    outside_file.write_text("evil")
+
+    # Update manifest to point to `../evil.txt`
+    manifest_path = codex_pack / "manifest.json"
+    with open(manifest_path, "r") as f:
+        data = json.load(f)
+
+    data["checksums"]["../evil.txt"] = "dummyhash"
+
+    with open(manifest_path, "w") as f:
+        json.dump(data, f)
+
+    loader = CodexLoader(codex_pack)
+    with pytest.raises(ValueError, match="Security Violation: Path traversal"):
+        loader.verify_integrity()
+
+
+def test_symlink_artifact(codex_pack: Path) -> None:
+    """Test that symlinked artifacts are rejected."""
+    # Create a symlink
+    symlink_path = codex_pack / "vocab.duckdb"
+    # Rename original
+    original_path = codex_pack / "vocab_real.duckdb"
+    symlink_path.rename(original_path)
+    # Link
+    os.symlink(original_path, symlink_path)
+
+    loader = CodexLoader(codex_pack)
+    with pytest.raises(ValueError, match="Security Violation: Symlinks not allowed"):
+        loader.verify_integrity()
+
+
+def test_invalid_duckdb_file(codex_pack: Path) -> None:
+    """Test valid hash but invalid DB format."""
+    duck_path = codex_pack / "vocab.duckdb"
+    duck_path.unlink()
+    # Write garbage
+    duck_path.write_text("Not a DB")
+
+    # Update manifest hash to match this garbage
+    loader = CodexLoader(codex_pack)
+    new_hash = loader._compute_sha256(duck_path)
+
+    manifest_path = codex_pack / "manifest.json"
+    with open(manifest_path, "r") as f:
+        data = json.load(f)
+    data["checksums"]["vocab.duckdb"] = new_hash
+    with open(manifest_path, "w") as f:
+        json.dump(data, f)
+
+    # verify_integrity should pass (hash matches)
+    assert loader.verify_integrity() is True
+
+    # load_codex should fail due to invalid db format
+    with pytest.raises(ValueError, match="Failed to initialize DuckDB connection"):
+        loader.load_codex()
+
+
+def test_lancedb_connection_failure(codex_pack: Path) -> None:
+    """Test failure during LanceDB connection."""
+    loader = CodexLoader(codex_pack)
+    with patch("lancedb.connect", side_effect=Exception("LanceDB error")):
+        with pytest.raises(ValueError, match="Failed to initialize LanceDB connection"):
+            loader.load_codex()
+
+
+def test_path_resolution_error(codex_pack: Path) -> None:
+    """Test generic error during path resolution."""
+    loader = CodexLoader(codex_pack)
+    # Patch Path.resolve to raise an error
+    with patch("pathlib.Path.resolve", side_effect=OSError("Disk error")):
+        with pytest.raises(ValueError, match="Invalid path for artifact"):
+            loader.verify_integrity()
