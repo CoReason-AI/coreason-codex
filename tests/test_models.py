@@ -72,7 +72,7 @@ def test_concept_validation_error() -> None:
     """Test that Concept requires an integer for concept_id."""
     with pytest.raises(ValidationError):
         Concept(
-            concept_id="not-an-integer",  # type: ignore
+            concept_id="not-an-integer",  # type: ignore[arg-type]
             concept_name="Test",
             domain_id="Test",
             vocabulary_id="Test",

@@ -13,7 +13,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 
-class Concept(BaseModel):  # type: ignore[misc]
+class Concept(BaseModel):
     """
     OMOP Standard Concept.
 
@@ -29,7 +29,7 @@ class Concept(BaseModel):  # type: ignore[misc]
     concept_code: str
 
 
-class CodexMatch(BaseModel):  # type: ignore[misc]
+class CodexMatch(BaseModel):
     """
     Result of a semantic search or exact match against the Codex.
 
