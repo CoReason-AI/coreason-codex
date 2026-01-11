@@ -11,8 +11,9 @@
 import math
 
 import pytest
-from coreason_codex.models import CodexMatch, Concept
 from pydantic import ValidationError
+
+from coreason_codex.models import CodexMatch, Concept
 
 
 def test_concept_instantiation() -> None:
