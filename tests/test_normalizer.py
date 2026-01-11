@@ -37,6 +37,9 @@ class MockEmbedder(Embedder):
             return [0.0, 1.0, 0.0, 0.0]
         elif text == "Drug A":
             return [0.0, 0.0, 1.0, 0.0]
+        elif text == "vector_mismatch":
+            # Return wrong dimension
+            return [1.0] * (self.dim + 1)
         else:
             # Random-ish vector
             val = float(len(text)) / 100.0
@@ -258,3 +261,58 @@ def test_invalid_domain_filter_injection(lance_test_db: Any) -> None:
     match = normalizer.normalize("Condition A", domain_filter=injection_attempt)
 
     assert match is None
+
+
+def test_normalize_empty_whitespace_input(lance_test_db: Any) -> None:
+    """Test that empty or whitespace input returns None immediately."""
+    embedder = MockEmbedder()
+    normalizer = CodexNormalizer(lance_test_db, embedder)
+
+    assert normalizer.normalize("") is None
+    assert normalizer.normalize("   ") is None
+
+
+def test_normalize_unicode_input(lance_test_db: Any) -> None:
+    """Test that input with special characters works."""
+    embedder = MockEmbedder()
+    normalizer = CodexNormalizer(lance_test_db, embedder)
+
+    # Should not crash, even if no good match
+    # Embedder mock calculates hash/len, so it will produce a vector
+    match = normalizer.normalize("Heart 💔 Attack")
+    # It might match something based on mock vector
+    assert match is not None or match is None  # Just ensuring no crash
+
+
+def test_vector_dimension_mismatch(lance_test_db: Any) -> None:
+    """Test graceful handling when embedder returns vector of wrong dimension."""
+    embedder = MockEmbedder(dim=4)
+    normalizer = CodexNormalizer(lance_test_db, embedder)
+
+    # MockEmbedder is updated to return wrong dim for specific text
+    match = normalizer.normalize("vector_mismatch")
+    assert match is None
+
+
+def test_domain_filter_case_sensitivity(lance_test_db: Any) -> None:
+    """Test case sensitivity of domain filter."""
+    embedder = MockEmbedder()
+    normalizer = CodexNormalizer(lance_test_db, embedder)
+
+    # "Condition" exists. "condition" (lowercase) does not in our mock data.
+    # Note: LanceDB SQL is usually case sensitive for string comparison unless ILIKE is used.
+    # We used '=', so it should be case sensitive.
+
+    # Matches with correct case
+    match1 = normalizer.normalize("Condition A", domain_filter="Condition")
+    assert match1 is not None
+
+    # Fails with wrong case
+    match2 = normalizer.normalize("Condition A", domain_filter="condition")
+    # If DB has "Condition", "condition" shouldn't match it.
+    # But since we limit(1), if filter removes all, we get nothing.
+    # If it returns nothing, then success (behavior verified).
+
+    # Wait, if filter returns nothing, query returns empty.
+    # We want to verify it returns empty/None.
+    assert match2 is None

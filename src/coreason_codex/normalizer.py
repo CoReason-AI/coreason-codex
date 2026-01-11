@@ -53,6 +53,10 @@ class CodexNormalizer:
         Returns:
             CodexMatch object if a match is found, None otherwise.
         """
+        if not text or not text.strip():
+            logger.warning("Normalize called with empty or whitespace text.")
+            return None
+
         try:
             vector = self.embedder.embed(text)
         except Exception as e:
