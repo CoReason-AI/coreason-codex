@@ -8,10 +8,11 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-import pytest
-from pydantic import ValidationError
+import math
 
+import pytest
 from coreason_codex.models import CodexMatch, Concept
+from pydantic import ValidationError
 
 
 def test_concept_instantiation() -> None:
@@ -191,3 +192,61 @@ def test_codex_match_complex_scenario() -> None:
     assert match.is_standard is False
     assert match.mapped_standard_id == 31967
     assert match.match_concept.vocabulary_id == "ICD10"
+
+
+def test_unicode_support() -> None:
+    """Test handling of Unicode characters in string fields."""
+    concept = Concept(
+        concept_id=1,
+        concept_name="Naïve T-cell β-receptor",
+        domain_id="Spec®ial",
+        vocabulary_id="Test",
+        concept_class_id="Test",
+        concept_code="µ-123",
+    )
+    assert concept.concept_name == "Naïve T-cell β-receptor"
+    assert concept.domain_id == "Spec®ial"
+
+
+def test_nan_infinity_similarity() -> None:
+    """Test that similarity_score accepts NaN and Infinity."""
+    concept = Concept(
+        concept_id=1,
+        concept_name="Test",
+        domain_id="Test",
+        vocabulary_id="Test",
+        concept_class_id="Test",
+        concept_code="Test",
+    )
+    # Test NaN
+    match_nan = CodexMatch(
+        input_text="test",
+        match_concept=concept,
+        similarity_score=float("nan"),
+        is_standard=False,
+    )
+    assert math.isnan(match_nan.similarity_score)
+
+    # Test Infinity
+    match_inf = CodexMatch(
+        input_text="test",
+        match_concept=concept,
+        similarity_score=float("inf"),
+        is_standard=False,
+    )
+    assert match_inf.similarity_score == float("inf")
+
+
+def test_missing_fields() -> None:
+    """Test that missing required fields raises ValidationError."""
+    with pytest.raises(ValidationError) as excinfo:
+        Concept(
+            concept_id=1,
+            # concept_name missing
+            domain_id="Test",
+            vocabulary_id="Test",
+            concept_class_id="Test",
+            concept_code="123",
+        )  # type: ignore[call-arg]
+    assert "concept_name" in str(excinfo.value)
+    assert "Field required" in str(excinfo.value)
