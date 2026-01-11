@@ -10,26 +10,32 @@
 
 import sys
 from pathlib import Path
+from typing import Any
 
-from loguru import logger
+from loguru import logger as _logger
 
 # Remove default handler
-logger.remove()
+_logger.remove()
 
 # Sink 1: Stdout (Human-readable)
-logger.add(
+_logger.add(
     sys.stderr,
     level="INFO",
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+    format=(
+        "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
+        "<level>{level: <8}</level> | "
+        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+        "<level>{message}</level>"
+    ),
 )
 
 # Ensure logs directory exists
 log_path = Path("logs")
 if not log_path.exists():
-    log_path.mkdir(parents=True, exist_ok=True)
+    log_path.mkdir(parents=True, exist_ok=True)  # pragma: no cover
 
 # Sink 2: File (JSON, Rotation, Retention)
-logger.add(
+_logger.add(
     "logs/app.log",
     rotation="500 MB",
     retention="10 days",
@@ -37,3 +43,7 @@ logger.add(
     enqueue=True,
     level="INFO",
 )
+
+logger: Any = _logger
+
+__all__ = ["logger"]
