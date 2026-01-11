@@ -74,7 +74,7 @@ def test_concept_validation_error() -> None:
     """Test that Concept requires an integer for concept_id."""
     with pytest.raises(ValidationError):
         Concept(
-            concept_id="not-an-integer",  # type: ignore[arg-type] # noqa: F821
+            concept_id="not-an-integer",
             concept_name="Test",
             domain_id="Test",
             vocabulary_id="Test",
@@ -124,7 +124,7 @@ def test_codex_match_nested_validation() -> None:
     with pytest.raises(ValidationError):
         CodexMatch(
             input_text="test",
-            match_concept={  # type: ignore[arg-type] # noqa: F821
+            match_concept={
                 "concept_id": "invalid",  # Not an int
                 "concept_name": "Test",
             },
