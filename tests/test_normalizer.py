@@ -15,7 +15,6 @@ from typing import Generator, List, Tuple
 import lancedb
 import numpy as np
 import pytest
-
 from coreason_codex.interfaces import Embedder
 from coreason_codex.normalizer import CodexNormalizer
 
