@@ -11,6 +11,7 @@
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 from coreason_codex.embedders import SapBertEmbedder
 
@@ -28,6 +29,15 @@ def test_sapbert_initialization_custom(mock_st: MagicMock) -> None:
     """Test initialization with a custom model name."""
     _ = SapBertEmbedder(model_name="custom/model")
     mock_st.assert_called_once_with("custom/model")
+
+
+@patch("coreason_codex.embedders.SentenceTransformer")
+def test_sapbert_initialization_failure(mock_st: MagicMock) -> None:
+    """Test that initialization raises error if model load fails."""
+    mock_st.side_effect = RuntimeError("Model not found")
+
+    with pytest.raises(RuntimeError, match="Model not found"):
+        SapBertEmbedder()
 
 
 @patch("coreason_codex.embedders.SentenceTransformer")
@@ -58,4 +68,34 @@ def test_embed_converts_to_numpy(mock_st: MagicMock) -> None:
     result = embedder.embed(["test"])
 
     assert isinstance(result, np.ndarray)
+    assert result.shape == (2, 2)
+
+
+@patch("coreason_codex.embedders.SentenceTransformer")
+def test_embed_empty_input(mock_st: MagicMock) -> None:
+    """Test embedding an empty list of texts."""
+    mock_model = mock_st.return_value
+    # SentenceTransformer usually returns empty array or list for empty input
+    mock_model.encode.return_value = np.array([])
+
+    embedder = SapBertEmbedder()
+    result = embedder.embed([])
+
+    mock_model.encode.assert_called_once_with([])
+    assert isinstance(result, np.ndarray)
+    assert result.size == 0
+
+
+@patch("coreason_codex.embedders.SentenceTransformer")
+def test_embed_whitespace_strings(mock_st: MagicMock) -> None:
+    """Test embedding strings that are empty or whitespace."""
+    mock_model = mock_st.return_value
+    # Mock return for 2 items
+    mock_model.encode.return_value = np.array([[0.1, 0.1], [0.2, 0.2]])
+
+    embedder = SapBertEmbedder()
+    texts = ["", "   "]
+    result = embedder.embed(texts)
+
+    mock_model.encode.assert_called_once_with(texts)
     assert result.shape == (2, 2)
