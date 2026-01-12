@@ -8,19 +8,24 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from typing import Dict
+from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
-class Manifest(BaseModel):
-    """
-    Manifest for a Codex Pack.
+class Concept(BaseModel):
+    concept_id: int
+    concept_name: str
+    domain_id: str
+    vocabulary_id: str
+    concept_class_id: str
+    standard_concept: Optional[str] = None
+    concept_code: str
 
-    Contains metadata and integrity information (checksums) for the
-    vocabulary and vector artifacts.
-    """
 
-    version: str = Field(..., description="Version of the Codex Pack (e.g., v2025_Q1)")
-    source_date: str = Field(..., description="Date of the source data (e.g., 2025-01-01)")
-    checksums: Dict[str, str] = Field(..., description="Map of filename to SHA-256 hash")
+class CodexMatch(BaseModel):
+    input_text: str
+    match_concept: Concept
+    similarity_score: float
+    is_standard: bool
+    mapped_standard_id: Optional[int] = None

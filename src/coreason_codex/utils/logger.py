@@ -14,6 +14,8 @@ from typing import Any
 
 from loguru import logger as _logger
 
+__all__ = ["logger"]
+
 # Remove default handler
 _logger.remove()
 

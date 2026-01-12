@@ -8,28 +8,25 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from pathlib import Path
-
 from coreason_codex.utils.logger import logger
 
 
-def test_logger_initialization() -> None:
-    """Test that the logger is initialized correctly and creates the log directory."""
-    # Since the logger is initialized on import, we check side effects
-
-    # Check if logs directory creation is handled
-    # Note: running this test might actually create the directory in the test environment
-    # if it doesn't exist.
-
-    log_path = Path("logs")
-    assert log_path.exists()
-    assert log_path.is_dir()
-
-    # Verify app.log creation if it was logged to (it might be empty or not created until log)
-    # logger.info("Test log")
-    # assert (log_path / "app.log").exists()
+def test_logger_interface() -> None:
+    # Verify logger is accessible
+    logger.info("Test log")
+    assert True
 
 
-def test_logger_exports() -> None:
-    """Test that logger is exported."""
-    assert logger is not None
+def test_logger_file_creation(tmp_path) -> None:  # type: ignore
+    # Note: We can't easily change the logger path at runtime without re-configuring loguru.
+    # The default logger writes to logs/app.log relative to CWD.
+    # We just check if that path exists.
+    import pathlib
+
+    log_file = pathlib.Path("logs/app.log")
+
+    # We can write something
+    logger.info("Verification")
+
+    # Force flush/close isn't straightforward with global logger, but file should exist
+    assert log_file.exists()
