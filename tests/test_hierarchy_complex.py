@@ -44,7 +44,7 @@ def complex_hierarchy_con() -> duckdb.DuckDBPyConnection:
         (10, 10, 0, 0),
         (10, 11, 1, 1),
         (10, 12, 1, 1),
-        (10, 13, 2, 2), # path via B or C, distance might vary but existence doesn't
+        (10, 13, 2, 2),  # path via B or C, distance might vary but existence doesn't
         (11, 11, 0, 0),
         (11, 13, 1, 1),
         (12, 12, 0, 0),
