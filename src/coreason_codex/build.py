@@ -64,6 +64,7 @@ class CodexBuilder:
 
         logger.info(f"Building vocab artifact at {db_path}")
 
+        con = None
         try:
             con = duckdb.connect(str(db_path))
 
@@ -80,11 +81,14 @@ class CodexBuilder:
             self._create_indexes(con)
 
             con.close()
+            con = None
             logger.info("Vocab build complete.")
             return db_path
 
         except Exception as e:
             logger.error(f"Failed to build vocab artifact: {e}")
+            if con:
+                con.close()
             if db_path.exists():
                 db_path.unlink()  # Cleanup partial build
             raise RuntimeError(f"Build failed: {e}") from e
