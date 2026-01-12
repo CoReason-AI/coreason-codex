@@ -8,15 +8,20 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-import importlib
-import shutil
 import sys
+import shutil
 from pathlib import Path
+import importlib
+import pytest
+from loguru import logger
 
 
 def test_logger_creates_directory() -> None:
     """Test that the logger module creates the logs directory if it doesn't exist."""
     log_path = Path("logs")
+
+    # 0. Ensure logger releases file handles (critical for Windows)
+    logger.remove()
 
     # 1. Cleanup before test
     if log_path.exists():
@@ -28,12 +33,12 @@ def test_logger_creates_directory() -> None:
 
     # 3. Import the module (should trigger execution of the top-level code)
     import coreason_codex.utils.logger
-
     importlib.reload(coreason_codex.utils.logger)
 
     # 4. Assert directory exists
     assert log_path.exists()
     assert log_path.is_dir()
 
-    # Cleanup after
-    # We leave it or clean it, but other tests might use it.
+    # Cleanup after (optional but good practice)
+    # logger.remove()
+    # We don't remove here because subsequent tests might rely on the logger being active.
