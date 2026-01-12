@@ -22,11 +22,13 @@ def test_sapbert_initialization(mock_st: MagicMock) -> None:
     mock_st.assert_called_once_with("cambridgeltl/SapBERT-from-PubMedBERT-fulltext")
     assert embedder.model == mock_st.return_value
 
+
 @patch("coreason_codex.embedders.SentenceTransformer")
 def test_sapbert_initialization_custom(mock_st: MagicMock) -> None:
     """Test initialization with a custom model name."""
     _ = SapBertEmbedder(model_name="custom/model")
     mock_st.assert_called_once_with("custom/model")
+
 
 @patch("coreason_codex.embedders.SentenceTransformer")
 def test_embed_success(mock_st: MagicMock) -> None:
@@ -43,6 +45,7 @@ def test_embed_success(mock_st: MagicMock) -> None:
     mock_model.encode.assert_called_once_with(texts)
     assert np.array_equal(result, expected_array)
     assert isinstance(result, np.ndarray)
+
 
 @patch("coreason_codex.embedders.SentenceTransformer")
 def test_embed_converts_to_numpy(mock_st: MagicMock) -> None:
