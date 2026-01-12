@@ -8,11 +8,11 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-import sys
-import shutil
-from pathlib import Path
 import importlib
-import pytest
+import shutil
+import sys
+from pathlib import Path
+
 from loguru import logger
 
 
@@ -33,6 +33,7 @@ def test_logger_creates_directory() -> None:
 
     # 3. Import the module (should trigger execution of the top-level code)
     import coreason_codex.utils.logger
+
     importlib.reload(coreason_codex.utils.logger)
 
     # 4. Assert directory exists
