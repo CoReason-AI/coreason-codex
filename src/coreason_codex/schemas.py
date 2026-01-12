@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from typing import Optional
+from typing import Dict, Optional
 
 from pydantic import BaseModel
 
@@ -29,3 +29,9 @@ class CodexMatch(BaseModel):
     similarity_score: float
     is_standard: bool
     mapped_standard_id: Optional[int] = None
+
+
+class Manifest(BaseModel):
+    version: str
+    source_date: str
+    checksums: Dict[str, str]
