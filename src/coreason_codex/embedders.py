@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from typing import List, cast
+from typing import List
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -48,4 +48,4 @@ class SapBertEmbedder:
             embeddings = np.array(embeddings)
 
         # Cast to Any first if necessary, but just cast to ndarray to satisfy mypy
-        return cast(np.ndarray, embeddings)
+        return embeddings

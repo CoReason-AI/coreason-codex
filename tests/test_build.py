@@ -142,6 +142,7 @@ def test_build_overwrites_existing(mock_athena_data: Path, tmp_path: Path) -> No
     # Verify it's a valid DB now, not dummy text
     con = duckdb.connect(str(db_path), read_only=True)
     result = con.execute("SELECT count(*) FROM CONCEPT").fetchone()
+    assert result is not None
     assert result[0] == 2
     con.close()
 
