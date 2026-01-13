@@ -87,8 +87,6 @@ def initialize(pack_path: str) -> None:
 
     except Exception as e:
         logger.exception("Failed to initialize Codex")
-        # Ensure we don't leave a partial or broken context
-        _CONTEXT = None
         raise RuntimeError(f"Codex initialization failed: {e}") from e
 
 
