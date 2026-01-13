@@ -48,4 +48,4 @@ class SapBertEmbedder:
             embeddings = np.array(embeddings)
 
         # Cast to Any first if necessary, but just cast to ndarray to satisfy mypy
-        return cast(np.ndarray, embeddings)
+        return embeddings

@@ -17,5 +17,6 @@ __author__ = "Gowtham A Rao"
 __email__ = "gowtham.rao@coreason.ai"
 
 from .main import hello_world
+from .pipeline import initialize
 
-__all__ = ["hello_world"]
+__all__ = ["hello_world", "initialize"]
