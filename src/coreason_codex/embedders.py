@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from typing import List, cast
+from typing import List
 
 import numpy as np
 from sentence_transformers import SentenceTransformer

@@ -8,15 +8,13 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
+from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 import coreason_codex.pipeline as pipeline
 from coreason_codex.pipeline import get_context, initialize
-
-
-from typing import Generator
 
 
 @pytest.fixture(autouse=True)
