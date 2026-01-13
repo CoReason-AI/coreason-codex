@@ -94,6 +94,7 @@ def test_build_large_ids(complex_athena_data: Path, tmp_path: Path) -> None:
     # Verify type is BIGINT or HUGEINT, not INTEGER
     # And verify value is correct
     result = con.execute("SELECT concept_id FROM CONCEPT").fetchone()
+    assert result is not None
     assert result[0] == large_id
     con.close()
 
@@ -124,6 +125,7 @@ def test_build_complex_text(complex_athena_data: Path, tmp_path: Path) -> None:
 
     con = duckdb.connect(str(db_path), read_only=True)
     result = con.execute("SELECT concept_name FROM CONCEPT WHERE concept_id=100").fetchone()
+    assert result is not None
     assert result[0] == complex_name
     con.close()
 
@@ -169,6 +171,8 @@ def test_build_empty_tables(complex_athena_data: Path, tmp_path: Path) -> None:
     db_path = builder.build_vocab()
 
     con = duckdb.connect(str(db_path), read_only=True)
-    count = con.execute("SELECT count(*) FROM CONCEPT").fetchone()[0]
+    result = con.execute("SELECT count(*) FROM CONCEPT").fetchone()
+    assert result is not None
+    count = result[0]
     assert count == 0
     con.close()
