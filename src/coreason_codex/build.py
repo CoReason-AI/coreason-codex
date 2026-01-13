@@ -9,10 +9,12 @@
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
 from pathlib import Path
-from typing import Union
+from typing import Any, Dict, Iterator, List, Union
 
 import duckdb
+import lancedb
 
+from coreason_codex.interfaces import Embedder
 from coreason_codex.utils.logger import logger
 
 
@@ -126,3 +128,86 @@ class CodexBuilder:
         con.execute("CREATE INDEX idx_cr_concept_2 ON CONCEPT_RELATIONSHIP(concept_id_2)")
 
         logger.info("Indexes created.")
+
+    def build_vectors(self, embedder: Embedder, table_name: str = "vectors", batch_size: int = 10000) -> None:
+        """
+        Builds the vector artifacts (LanceDB) from the DuckDB vocabulary.
+
+        Args:
+            embedder: The embedding model to use.
+            table_name: The name of the LanceDB table to create.
+            batch_size: Number of records to process at a time.
+        """
+        db_path = self.output_dir / "vocab.duckdb"
+        if not db_path.exists():
+            raise FileNotFoundError(f"Vocab artifact not found at: {db_path}. Run build_vocab() first.")
+
+        logger.info(f"Building vectors in LanceDB at {self.output_dir}")
+
+        con = duckdb.connect(str(db_path), read_only=True)
+        try:
+            # Prepare query
+            # We explicitly cast IDs to BIGINT to ensure type consistency if not already
+            query = """
+                SELECT
+                    concept_id,
+                    concept_name,
+                    domain_id,
+                    vocabulary_id,
+                    concept_class_id,
+                    standard_concept,
+                    concept_code
+                FROM CONCEPT
+                WHERE concept_name IS NOT NULL AND concept_name != ''
+            """
+            cursor = con.execute(query)
+
+            def batch_generator() -> Iterator[List[Dict[str, Any]]]:
+                while True:
+                    rows = cursor.fetchmany(batch_size)
+                    if not rows:
+                        break
+
+                    # rows is list of tuples
+                    # Extract text for embedding
+                    texts = [row[1] for row in rows]
+
+                    try:
+                        embeddings = embedder.embed(texts)
+                    except Exception as e:
+                        logger.error(f"Failed to embed batch: {e}")
+                        raise
+
+                    batch_data = []
+                    for i, row in enumerate(rows):
+                        # Ensure row items match the schema order from query
+                        record = {
+                            "vector": embeddings[i],
+                            "concept_id": row[0],
+                            "concept_name": row[1],
+                            "domain_id": row[2],
+                            "vocabulary_id": row[3],
+                            "concept_class_id": row[4],
+                            "standard_concept": row[5],
+                            "concept_code": row[6],
+                        }
+                        batch_data.append(record)
+
+                    logger.info(f"Processed batch of {len(batch_data)} records")
+                    yield batch_data
+
+            # Initialize LanceDB connection
+            # Note: lancedb.connect(str(self.output_dir)) creates the DB in output_dir
+            lance_db = lancedb.connect(str(self.output_dir))
+
+            # Create table (overwrites if exists)
+            # data=batch_generator() consumes the generator
+            lance_db.create_table(table_name, data=batch_generator(), mode="overwrite")
+
+            logger.info(f"Vector table '{table_name}' built successfully.")
+
+        except Exception as e:
+            logger.error(f"Failed to build vectors: {e}")
+            raise RuntimeError(f"Vector build failed: {e}") from e
+        finally:
+            con.close()
