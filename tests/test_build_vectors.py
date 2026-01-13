@@ -10,8 +10,8 @@
 
 import csv
 from pathlib import Path
-from typing import List
-from unittest.mock import patch
+from typing import Any, Iterator, List
+from unittest.mock import MagicMock, patch
 
 import lancedb
 import numpy as np
@@ -177,3 +177,28 @@ def test_build_vectors_db_error(mock_athena_data: Path, tmp_path: Path) -> None:
     with patch("coreason_codex.build.lancedb.connect", side_effect=RuntimeError("DB Error")):
         with pytest.raises(RuntimeError, match="Vector build failed"):
             builder.build_vectors(embedder)
+
+
+def test_batch_generator_coverage(mock_athena_data: Path, tmp_path: Path) -> None:
+    """Test to ensure batch generator is fully exhausted to cover the break statement."""
+    output_dir = tmp_path / "output"
+    builder = CodexBuilder(source_dir=mock_athena_data, output_dir=output_dir)
+    builder.build_vocab()
+    embedder = MockEmbedder()
+
+    with patch("coreason_codex.build.lancedb.connect") as mock_connect:
+        mock_db = mock_connect.return_value
+
+        def consume_generator(name: str, data: Iterator[Any], mode: str) -> Any:
+            # Consume all items
+            for _ in data:
+                pass
+            return MagicMock()
+
+        mock_db.create_table.side_effect = consume_generator
+
+        # Run build_vectors with batch_size=1 to force multiple iterations
+        builder.build_vectors(embedder, batch_size=1)
+
+        # Verify create_table was called
+        assert mock_db.create_table.called
