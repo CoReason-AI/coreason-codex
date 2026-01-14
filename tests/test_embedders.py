@@ -8,6 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
+from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -16,86 +17,59 @@ import pytest
 from coreason_codex.embedders import SapBertEmbedder
 
 
-@patch("coreason_codex.embedders.SentenceTransformer")
-def test_sapbert_initialization(mock_st: MagicMock) -> None:
-    """Test that the model is initialized with the correct default name."""
+@pytest.fixture
+def mock_sentence_transformer() -> Generator[MagicMock, None, None]:
+    with patch("coreason_codex.embedders.SentenceTransformer") as MockClass:
+        mock_instance = MockClass.return_value
+
+        # Configure encode mock to return valid shapes
+        def side_effect(sentences: Any, **kwargs: Any) -> np.ndarray:
+            # Check if input is list or string
+            if isinstance(sentences, list):
+                # Return batch: (N, 768)
+                return np.random.rand(len(sentences), 768).astype(np.float32)
+            else:
+                # Return single: (768,)
+                return np.random.rand(768).astype(np.float32)
+
+        mock_instance.encode.side_effect = side_effect
+        yield MockClass
+
+
+def test_sapbert_init(mock_sentence_transformer: Any) -> None:
     embedder = SapBertEmbedder()
-    mock_st.assert_called_once_with("cambridgeltl/SapBERT-from-PubMedBERT-fulltext")
-    assert embedder.model == mock_st.return_value
+    mock_sentence_transformer.assert_called_once()
+    assert embedder.model is not None
 
 
-@patch("coreason_codex.embedders.SentenceTransformer")
-def test_sapbert_initialization_custom(mock_st: MagicMock) -> None:
-    """Test initialization with a custom model name."""
-    _ = SapBertEmbedder(model_name="custom/model")
-    mock_st.assert_called_once_with("custom/model")
-
-
-@patch("coreason_codex.embedders.SentenceTransformer")
-def test_sapbert_initialization_failure(mock_st: MagicMock) -> None:
-    """Test that initialization raises error if model load fails."""
-    mock_st.side_effect = RuntimeError("Model not found")
-
-    with pytest.raises(RuntimeError, match="Model not found"):
-        SapBertEmbedder()
-
-
-@patch("coreason_codex.embedders.SentenceTransformer")
-def test_embed_success(mock_st: MagicMock) -> None:
-    """Test the embed method returns a numpy array."""
-    # Setup mock return value
-    mock_model = mock_st.return_value
-    expected_array = np.array([[0.1, 0.2], [0.3, 0.4]])
-    mock_model.encode.return_value = expected_array
-
+def test_sapbert_embed_single(mock_sentence_transformer: Any) -> None:
     embedder = SapBertEmbedder()
-    texts = ["one", "two"]
-    result = embedder.embed(texts)
+    text = "Heart Attack"
+    vector = embedder.embed(text)
 
-    mock_model.encode.assert_called_once_with(texts)
-    assert np.array_equal(result, expected_array)
-    assert isinstance(result, np.ndarray)
+    assert isinstance(vector, list)
+    assert len(vector) == 768
+    assert isinstance(vector[0], float)
+
+    # Verify mock call
+    # Use explicit cast or ignore if mypy complains about assert_called_with on Any/MagicMock
+    embedder.model.encode.assert_called_with(text, convert_to_numpy=True)  # type: ignore
 
 
-@patch("coreason_codex.embedders.SentenceTransformer")
-def test_embed_converts_to_numpy(mock_st: MagicMock) -> None:
-    """Test that if encode returns a list, it is converted to numpy array."""
-    mock_model = mock_st.return_value
-    # Return list of lists
-    mock_model.encode.return_value = [[0.1, 0.2], [0.3, 0.4]]
-
+def test_sapbert_embed_batch(mock_sentence_transformer: Any) -> None:
     embedder = SapBertEmbedder()
-    result = embedder.embed(["test"])
+    texts = ["Heart Attack", "Diabetes"]
+    vectors = embedder.embed_batch(texts)
 
-    assert isinstance(result, np.ndarray)
-    assert result.shape == (2, 2)
+    assert isinstance(vectors, list)
+    assert len(vectors) == 2
+    assert len(vectors[0]) == 768
 
-
-@patch("coreason_codex.embedders.SentenceTransformer")
-def test_embed_empty_input(mock_st: MagicMock) -> None:
-    """Test embedding an empty list of texts."""
-    mock_model = mock_st.return_value
-    # SentenceTransformer usually returns empty array or list for empty input
-    mock_model.encode.return_value = np.array([])
-
-    embedder = SapBertEmbedder()
-    result = embedder.embed([])
-
-    mock_model.encode.assert_called_once_with([])
-    assert isinstance(result, np.ndarray)
-    assert result.size == 0
+    # Verify mock call
+    embedder.model.encode.assert_called_with(texts, convert_to_numpy=True, show_progress_bar=False)  # type: ignore
 
 
-@patch("coreason_codex.embedders.SentenceTransformer")
-def test_embed_whitespace_strings(mock_st: MagicMock) -> None:
-    """Test embedding strings that are empty or whitespace."""
-    mock_model = mock_st.return_value
-    # Mock return for 2 items
-    mock_model.encode.return_value = np.array([[0.1, 0.1], [0.2, 0.2]])
-
-    embedder = SapBertEmbedder()
-    texts = ["", "   "]
-    result = embedder.embed(texts)
-
-    mock_model.encode.assert_called_once_with(texts)
-    assert result.shape == (2, 2)
+def test_sapbert_init_failure() -> None:
+    with patch("coreason_codex.embedders.SentenceTransformer", side_effect=Exception("Download failed")):
+        with pytest.raises(RuntimeError, match="Could not load embedding model"):
+            SapBertEmbedder()

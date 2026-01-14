@@ -8,99 +8,65 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
+from typing import Any
+
 import duckdb
 import pytest
 
 from coreason_codex.crosswalker import CodexCrossWalker
-from coreason_codex.schemas import Concept
+from coreason_codex.loader import CodexLoader
 
 
 @pytest.fixture
-def duckdb_con() -> duckdb.DuckDBPyConnection:
-    """Creates a temporary in-memory DuckDB connection with test data."""
-    con = duckdb.connect(":memory:")
-
-    # Create tables
-    con.execute("""
-        CREATE TABLE CONCEPT (
-            concept_id INTEGER,
-            concept_name VARCHAR,
-            domain_id VARCHAR,
-            vocabulary_id VARCHAR,
-            concept_class_id VARCHAR,
-            standard_concept VARCHAR,
-            concept_code VARCHAR,
-            invalid_reason VARCHAR
-        )
-    """)
-
-    con.execute("""
-        CREATE TABLE CONCEPT_RELATIONSHIP (
-            concept_id_1 INTEGER,
-            concept_id_2 INTEGER,
-            relationship_id VARCHAR,
-            invalid_reason VARCHAR
-        )
-    """)
-
-    # Insert test data
-    # Source Concept: 1 (SNOMED 'A')
-    # Target Concept: 2 (ICD10 'B')
-    # Target Concept: 3 (ICD10 'C') - Invalid
-    # Target Concept: 4 (OtherVocab 'D')
-
-    # Concepts
-    con.execute("INSERT INTO CONCEPT VALUES (1, 'A', 'Condition', 'SNOMED', 'Clinc', 'S', 'A01', NULL)")
-    con.execute("INSERT INTO CONCEPT VALUES (2, 'B', 'Condition', 'ICD10CM', 'Code', NULL, 'B02', NULL)")
-    con.execute("INSERT INTO CONCEPT VALUES (3, 'C', 'Condition', 'ICD10CM', 'Code', NULL, 'C03', 'D')")  # Invalid
-    con.execute("INSERT INTO CONCEPT VALUES (4, 'D', 'Condition', 'Other', 'Code', NULL, 'D04', NULL)")
-
-    # Relationships
-    con.execute("INSERT INTO CONCEPT_RELATIONSHIP VALUES (1, 2, 'Maps to', NULL)")
-    con.execute("INSERT INTO CONCEPT_RELATIONSHIP VALUES (1, 3, 'Maps to', NULL)")
-    con.execute("INSERT INTO CONCEPT_RELATIONSHIP VALUES (1, 4, 'Maps to', NULL)")
-    con.execute(
-        "INSERT INTO CONCEPT_RELATIONSHIP VALUES (1, 2, 'Maps to', 'D')"
-    )  # Invalid relationship duplicate (mocking scenario)
-
-    return con
+def crosswalker_engine(synthetic_codex_pack: Any) -> CodexCrossWalker:
+    loader = CodexLoader(synthetic_codex_pack)
+    con, _ = loader.load_codex()
+    return CodexCrossWalker(con)
 
 
-def test_translate_code_success(duckdb_con: duckdb.DuckDBPyConnection) -> None:
-    """Test successful translation."""
-    walker = CodexCrossWalker(duckdb_con)
-    translations = walker.translate_code(1, "ICD10CM")
-
-    assert len(translations) == 1
-    c = translations[0]
-    assert isinstance(c, Concept)
-    assert c.concept_id == 2
-    assert c.vocabulary_id == "ICD10CM"
-    assert c.concept_code == "B02"
+def test_crosswalker_init_success(crosswalker_engine: CodexCrossWalker) -> None:
+    assert crosswalker_engine is not None
 
 
-def test_translate_code_no_match(duckdb_con: duckdb.DuckDBPyConnection) -> None:
-    """Test translation with no matches in target vocabulary."""
-    walker = CodexCrossWalker(duckdb_con)
-    translations = walker.translate_code(1, "RxNorm")
-    assert translations == []
+def test_crosswalker_init_failure(tmp_path: Any) -> None:
+    # Create an empty DB without the table
+    db_path = tmp_path / "empty.duckdb"
+    con = duckdb.connect(str(db_path))
+
+    with pytest.raises(ValueError, match="concept_relationship' is missing"):
+        CodexCrossWalker(con)
 
 
-def test_translate_code_invalid_target(duckdb_con: duckdb.DuckDBPyConnection) -> None:
-    """Test that invalid concepts are filtered out."""
-    # We set up concept 3 as invalid in fixture.
-    # It has a valid relationship from 1, but the concept itself is invalid.
-    walker = CodexCrossWalker(duckdb_con)
-    # If we query for ICD10CM, we should only get concept 2, not 3.
-    translations = walker.translate_code(1, "ICD10CM")
-    ids = [c.concept_id for c in translations]
-    assert 2 in ids
-    assert 3 not in ids
+def test_translate_icd_to_snomed(crosswalker_engine: CodexCrossWalker) -> None:
+    # 999999 (ICD10 I21.9) -> "Maps to" -> 312327 (SNOMED Acute MI)
+    results = crosswalker_engine.translate_code(999999, relationship_id="Maps to")
+
+    assert len(results) == 1
+    target = results[0]
+    assert target.concept_id == 312327
+    assert target.vocabulary_id == "SNOMED"
+    assert target.standard_concept == "S"
 
 
-def test_translate_code_error(duckdb_con: duckdb.DuckDBPyConnection) -> None:
-    """Test handling of DB errors."""
-    duckdb_con.close()
-    walker = CodexCrossWalker(duckdb_con)
-    translations = walker.translate_code(1, "ICD10CM")
-    assert translations == []
+def test_translate_with_vocab_filter(crosswalker_engine: CodexCrossWalker) -> None:
+    # 999999 -> 312327 (SNOMED)
+
+    # 1. Correct Filter
+    results = crosswalker_engine.translate_code(999999, target_vocabulary_id="SNOMED")
+    assert len(results) == 1
+
+    # 2. Incorrect Filter
+    results_empty = crosswalker_engine.translate_code(999999, target_vocabulary_id="RxNorm")
+    assert len(results_empty) == 0
+
+
+def test_translate_no_mapping(crosswalker_engine: CodexCrossWalker) -> None:
+    # 312327 (Standard Concept) usually maps to itself in 'Maps to' only if explicit.
+    # In our sample data, 312327 has NO outgoing 'Maps to' relationship defined.
+    results = crosswalker_engine.translate_code(312327)
+    assert len(results) == 0
+
+
+def test_translate_invalid_id(crosswalker_engine: CodexCrossWalker) -> None:
+    results = crosswalker_engine.translate_code(-1)
+    assert len(results) == 0

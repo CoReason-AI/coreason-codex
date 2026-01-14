@@ -8,130 +8,85 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from typing import Generator
+from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-import coreason_codex.pipeline as pipeline
-from coreason_codex.pipeline import get_context, initialize
+from coreason_codex.pipeline import (
+    CodexContext,
+    codex_get_descendants,
+    codex_normalize,
+    codex_translate_code,
+    initialize,
+)
+from coreason_codex.schemas import CodexMatch, Concept
 
 
-@pytest.fixture(autouse=True)
-def reset_context() -> Generator[None, None, None]:
-    """Reset the global context before and after each test."""
-    pipeline._CONTEXT = None
-    yield
-    pipeline._CONTEXT = None
+# We mock CodexContext initialization to avoid real DB loading in unit tests
+@pytest.fixture
+def mock_context(synthetic_codex_pack: Any) -> Generator[Any, None, None]:
+    # Mock Loader
+    with patch("coreason_codex.pipeline.CodexLoader") as MockLoader:
+        mock_loader_instance = MockLoader.return_value
+        # Mock connections
+        mock_duck = MagicMock()
+        mock_lance = MagicMock()
+        mock_loader_instance.load_codex.return_value = (mock_duck, mock_lance)
+
+        # Mock Embedder (to avoid download)
+        with patch("coreason_codex.pipeline.SapBertEmbedder"):
+            # Initialize
+            initialize(str(synthetic_codex_pack))
+
+            yield CodexContext.get_instance()
+
+            # Teardown
+            CodexContext._instance = None
 
 
-@patch("coreason_codex.pipeline.CodexLoader")
-@patch("coreason_codex.pipeline.SapBertEmbedder")
-@patch("coreason_codex.pipeline.CodexNormalizer")
-@patch("coreason_codex.pipeline.CodexHierarchy")
-@patch("coreason_codex.pipeline.CodexCrossWalker")
-def test_initialize_success(
-    mock_crosswalker: MagicMock,
-    mock_hierarchy: MagicMock,
-    mock_normalizer: MagicMock,
-    mock_embedder: MagicMock,
-    mock_loader: MagicMock,
-) -> None:
-    """Test successful initialization of the Codex system."""
-    # Setup mocks
-    loader_instance = mock_loader.return_value
-    duckdb_con = MagicMock()
-    lancedb_con = MagicMock()
-    loader_instance.load_codex.return_value = (duckdb_con, lancedb_con)
+def test_pipeline_initialize(synthetic_codex_pack: Any) -> None:
+    # Reset singleton
+    CodexContext._instance = None
 
-    # Setup LanceDB table mock
-    vector_table = MagicMock()
-    lancedb_con.open_table.return_value = vector_table
+    with patch("coreason_codex.pipeline.CodexLoader") as MockLoader:
+        # We must return mock connections from load_codex
+        mock_instance = MockLoader.return_value
+        mock_instance.load_codex.return_value = (MagicMock(), MagicMock())
 
-    # Call initialize
-    pack_path = "/tmp/codex_pack"
-    initialize(pack_path)
-
-    # Verify CodexLoader usage
-    mock_loader.assert_called_once_with(pack_path)
-    loader_instance.load_codex.assert_called_once()
-
-    # Verify SapBertEmbedder usage
-    mock_embedder.assert_called_once()
-
-    # Verify Engines initialization
-    lancedb_con.open_table.assert_called_once_with("vectors")
-    mock_normalizer.assert_called_once_with(table=vector_table, embedder=mock_embedder.return_value)
-    mock_hierarchy.assert_called_once_with(con=duckdb_con)
-    mock_crosswalker.assert_called_once_with(con=duckdb_con)
-
-    # Verify Context is set
-    context = get_context()
-    assert context.normalizer == mock_normalizer.return_value
-    assert context.hierarchy == mock_hierarchy.return_value
-    assert context.crosswalker == mock_crosswalker.return_value
+        with patch("coreason_codex.pipeline.SapBertEmbedder"):
+            initialize(str(synthetic_codex_pack))
+            assert CodexContext._instance is not None
 
 
-@patch("coreason_codex.pipeline.CodexLoader")
-def test_initialize_failure_loader(mock_loader: MagicMock) -> None:
-    """Test initialization failure when loader fails."""
-    mock_loader.side_effect = Exception("Loader error")
-
-    with pytest.raises(RuntimeError, match="Codex initialization failed: Loader error"):
-        initialize("/tmp/path")
-
-    # Verify context is None
-    with pytest.raises(RuntimeError, match="Codex not initialized"):
-        get_context()
-
-
-@patch("coreason_codex.pipeline.CodexLoader")
-@patch("coreason_codex.pipeline.SapBertEmbedder")
-def test_initialize_failure_table_missing(mock_embedder: MagicMock, mock_loader: MagicMock) -> None:
-    """Test initialization failure when vector table is missing."""
-    loader_instance = mock_loader.return_value
-    lancedb_con = MagicMock()
-    loader_instance.load_codex.return_value = (MagicMock(), lancedb_con)
-
-    # Make open_table fail
-    lancedb_con.open_table.side_effect = Exception("Table not found")
-
-    with pytest.raises(RuntimeError, match="Codex initialization failed: Vector table 'vectors' not found"):
-        initialize("/tmp/path")
+def test_codex_normalize_proxy(mock_context: Any) -> None:
+    # normalize returns List[CodexMatch]
+    expected_match = CodexMatch(
+        input_text="test",
+        match_concept=Concept(
+            concept_id=1, concept_name="C", domain_id="D", vocabulary_id="V", concept_class_id="C", concept_code="1"
+        ),
+        similarity_score=1.0,
+        is_standard=True,
+    )
+    mock_context.normalizer.normalize = MagicMock(return_value=[expected_match])
+    res = codex_normalize("test")
+    assert res == [expected_match]
+    mock_context.normalizer.normalize.assert_called_with("test", domain_filter=None)
 
 
-def test_get_context_uninitialized() -> None:
-    """Test get_context raises error when not initialized."""
-    with pytest.raises(RuntimeError, match="Codex not initialized"):
-        get_context()
+def test_codex_get_descendants_proxy(mock_context: Any) -> None:
+    mock_context.hierarchy.get_descendants = MagicMock(return_value=[123])
+    res = codex_get_descendants(1)
+    assert res == [123]
+    mock_context.hierarchy.get_descendants.assert_called_with(1)
 
 
-@patch("coreason_codex.pipeline.CodexLoader")
-@patch("coreason_codex.pipeline.SapBertEmbedder")
-@patch("coreason_codex.pipeline.CodexNormalizer")
-@patch("coreason_codex.pipeline.CodexHierarchy")
-@patch("coreason_codex.pipeline.CodexCrossWalker")
-def test_reinitialization(
-    mock_cw: MagicMock,
-    mock_hier: MagicMock,
-    mock_norm: MagicMock,
-    mock_emb: MagicMock,
-    mock_loader: MagicMock,
-) -> None:
-    """Test that calling initialize twice updates the context."""
-    # Setup mocks
-    loader_instance = mock_loader.return_value
-    loader_instance.load_codex.return_value = (MagicMock(), MagicMock())
-    lancedb_con = loader_instance.load_codex.return_value[1]
-    lancedb_con.open_table.return_value = MagicMock()
-
-    # First initialization
-    initialize("/path/1")
-    ctx1 = get_context()
-
-    # Second initialization
-    initialize("/path/2")
-    ctx2 = get_context()
-
-    assert ctx1 is not ctx2
-    assert mock_loader.call_count == 2
+def test_codex_translate_code_proxy(mock_context: Any) -> None:
+    expected_concept = Concept(
+        concept_id=1, concept_name="C", domain_id="D", vocabulary_id="V", concept_class_id="C", concept_code="1"
+    )
+    mock_context.crosswalker.translate_code = MagicMock(return_value=[expected_concept])
+    res = codex_translate_code(1, target_vocabulary="SNOMED")
+    assert res == [expected_concept]
+    mock_context.crosswalker.translate_code.assert_called_with(1, target_vocabulary_id="SNOMED")

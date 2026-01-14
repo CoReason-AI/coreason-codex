@@ -10,42 +10,53 @@
 
 from typing import List
 
-import numpy as np
 from sentence_transformers import SentenceTransformer
 
+from coreason_codex.interfaces import Embedder
 from coreason_codex.utils.logger import logger
 
 
-class SapBertEmbedder:
+class SapBertEmbedder(Embedder):
     """
     Embedder implementation using SapBERT model via SentenceTransformer.
+    Reference: cambridgeltl/SapBERT-from-PubMedBERT-fulltext
     """
 
-    def __init__(self, model_name: str = "cambridgeltl/SapBERT-from-PubMedBERT-fulltext") -> None:
+    def __init__(self, model_name: str = "cambridgeltl/SapBERT-from-PubMedBERT-fulltext", device: str = "cpu") -> None:
         """
         Initialize the SapBERT embedder.
 
         Args:
             model_name: The name of the HuggingFace model to load.
+            device: 'cpu', 'cuda', etc.
         """
-        logger.info(f"Loading embedding model: {model_name}")
-        self.model = SentenceTransformer(model_name)
+        logger.info(f"Loading embedding model: {model_name} on {device}")
+        try:
+            self.model = SentenceTransformer(model_name, device=device)
+        except Exception as e:
+            logger.error(f"Failed to load model {model_name}: {e}")
+            raise RuntimeError(f"Could not load embedding model: {e}") from e
 
-    def embed(self, texts: List[str]) -> np.ndarray:
+    def embed(self, text: str) -> List[float]:
         """
-        Embed a list of texts into a numpy array of vectors.
-
-        Args:
-            texts: A list of strings to embed.
-
-        Returns:
-            A numpy array of shape (len(texts), embedding_dim).
+        Embed a single string.
         """
-        logger.info(f"Embedding {len(texts)} texts")
-        embeddings = self.model.encode(texts)
-        # Ensure it returns numpy array (encode usually does, but let's be safe)
-        if not isinstance(embeddings, np.ndarray):
-            embeddings = np.array(embeddings)
+        if not text:
+            # Handle empty string specifically if model fails or return empty/zero logic upstream
+            pass
 
-        # Cast to Any first if necessary, but just cast to ndarray to satisfy mypy
-        return embeddings
+        # encode returns ndarray or tensor
+        vector = self.model.encode(text, convert_to_numpy=True)
+        # mypy thinks this is Any, so we cast list(float)
+        return [float(x) for x in vector.tolist()]
+
+    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+        """
+        Embed a list of strings.
+        """
+        if not texts:
+            return []
+
+        vectors = self.model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+        # mypy thinks this is Any, so we cast
+        return [[float(x) for x in vec.tolist()] for vec in vectors]

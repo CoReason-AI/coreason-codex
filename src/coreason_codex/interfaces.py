@@ -10,20 +10,20 @@
 
 from typing import List, Protocol
 
-import numpy as np
-
 
 class Embedder(Protocol):
-    """Protocol for embedding models."""
+    """
+    Protocol for text embedding models.
+    """
 
-    def embed(self, texts: List[str]) -> np.ndarray:
+    def embed(self, text: str) -> List[float]:
         """
-        Embed a list of texts into a numpy array of vectors.
+        Embeds a single string into a vector.
+        """
+        ...
 
-        Args:
-            texts: A list of strings to embed.
-
-        Returns:
-            A numpy array of shape (len(texts), embedding_dim).
+    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+        """
+        Embeds a list of strings into a list of vectors.
         """
         ...

@@ -8,114 +8,152 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
-import lancedb
+import duckdb
+from loguru import logger
 
 from coreason_codex.interfaces import Embedder
 from coreason_codex.schemas import CodexMatch, Concept
-from coreason_codex.utils.logger import logger
 
 
 class CodexNormalizer:
     """
-    Semantic Normalizer that maps free text to Standard Concept IDs.
-    Uses Vector Search (LanceDB) and Domain Filtering.
+    The Semantic Normalizer. Maps free text to Standard OMOP Concepts.
+
+    Mechanism:
+    1. Embeds input text using the provided Embedder.
+    2. Searches LanceDB for nearest neighbor vectors to find Concept IDs.
+    3. Hydrates Concept details from DuckDB.
+    4. Applies domain filtering and formatting.
     """
 
-    def __init__(self, table: lancedb.table.Table, embedder: Embedder) -> None:
-        """
-        Initialize the CodexNormalizer.
-
-        Args:
-            table: An initialized LanceDB table containing the vocabulary vectors.
-            embedder: An instance of an Embedder (e.g., SapBERT or Mock).
-        """
-        self.table = table
+    def __init__(
+        self,
+        embedder: Embedder,
+        duckdb_conn: duckdb.DuckDBPyConnection,
+        lancedb_conn: Any,
+        vector_table_name: str = "vectors",
+    ):
         self.embedder = embedder
+        self.duckdb_conn = duckdb_conn
+        self.lancedb_conn = lancedb_conn
+        self.vector_table_name = vector_table_name
 
-    def normalize(self, text: str, domain_filter: Optional[str] = None) -> List[CodexMatch]:
+        # Verify table exists
+        try:
+            self.table = self.lancedb_conn.open_table(self.vector_table_name)
+        except Exception as e:
+            logger.error(f"Failed to open LanceDB table '{self.vector_table_name}': {e}")
+            raise ValueError(f"LanceDB table '{self.vector_table_name}' not found.") from e
+
+    def normalize(self, text: str, k: int = 10, domain_filter: Optional[str] = None) -> List[CodexMatch]:
         """
-        Normalize input text to a list of matching concepts.
+        Normalizes text to standard concepts.
 
         Args:
-            text: The input text to normalize (e.g., "Patient felt queasy").
-            domain_filter: Optional domain ID to filter results (e.g., "Condition").
-
-        Returns:
-            A list of CodexMatch objects sorted by similarity.
+            text: The input text (e.g. "heart attack").
+            k: Number of candidates to retrieve.
+            domain_filter: Optional OMOP Domain ID to filter by (e.g. "Condition", "Drug").
         """
-        logger.info(f"Normalizing text: '{text}' with domain_filter='{domain_filter}'")
-
-        # 1. Embed the input text
-        # The embedder is expected to return a numpy array (or list of list)
-        # We handle single string input by wrapping it in a list
-        embeddings = self.embedder.embed([text])
-        if len(embeddings) == 0:
-            logger.warning("Embedder returned empty embeddings.")
+        if not text.strip():
             return []
 
-        vector = embeddings[0]
+        # 1. Embed
+        vector = self.embedder.embed(text)
 
-        # 2. Build Query
-        query = self.table.search(vector)
+        # 2. Vector Search (LanceDB)
+        # Returns a PyArrow table or similar. We convert to list of dicts.
+        # We assume the schema has 'concept_id' and 'concept_name'.
+        results = self.table.search(vector).limit(k).to_list()
 
-        # 3. Apply Domain Filter if provided
+        if not results:
+            return []
+
+        # Extract IDs and scores
+        # We need to map concept_id -> score to attach later
+        # NOTE: LanceDB results are usually sorted by distance (ASC).
+        # We want to keep the BEST (first) score for each unique concept_id.
+        concept_scores = {}
+        for r in results:
+            c_id = r["concept_id"]
+            if c_id not in concept_scores:
+                concept_scores[c_id] = 1.0 - r["_distance"]
+
+        concept_ids = list(concept_scores.keys())
+
+        if not concept_ids:
+            return []
+
+        # 3. Hydrate from DuckDB
+        # We query the concept details.
+        # Note: We enforce standard concept status if desired, but usually normalizer returns what matches.
+        # However, PRD says: "Matches 'Nausea' (ConceptID: 31967)".
+        # And CodexMatch has `is_standard`.
+        query = f"""
+            SELECT
+                concept_id,
+                concept_name,
+                domain_id,
+                vocabulary_id,
+                concept_class_id,
+                standard_concept,
+                concept_code
+            FROM concept
+            WHERE concept_id IN ({",".join(["?"] * len(concept_ids))})
+        """
+
+        # Add domain filter if present
+        params = list(concept_ids)
         if domain_filter:
-            query = query.where(f"domain_id = '{domain_filter}'")
+            query += " AND domain_id = ?"
+            params.append(domain_filter)
 
-        # 4. Execute Search
-        # We default to top 10 matches for now, could be configurable
-        results = query.limit(10).to_list()
+        cursor = self.duckdb_conn.execute(query, params)
+        rows = cursor.fetchall()
 
+        # 4. Construct Matches
         matches: List[CodexMatch] = []
-        for res in results:
-            # Map LanceDB result to Concept schema
-            # Assuming LanceDB columns match Concept schema fields + 'vector' + '_distance'
+        for row in rows:
+            # Row order: id, name, domain, vocab, class, standard, code
+            c_id = row[0]
 
-            # Note: LanceDB search returns distance. Similarity is usually 1 - distance (for cosine)
-            # or depending on metric. Assuming standard cosine distance here or similar.
-            # If metric is "cosine", smaller is better. If "inner_product", larger is better.
-            # For this implementation, we will use the '_distance' field provided by LanceDB.
-            # However, CodexMatch expects 'similarity_score'.
-            # If the vector search uses cosine distance, score = 1 - distance.
+            concept = Concept(
+                concept_id=c_id,
+                concept_name=row[1],
+                domain_id=row[2],
+                vocabulary_id=row[3],
+                concept_class_id=row[4],
+                standard_concept=row[5],
+                concept_code=row[6],
+            )
 
-            distance = res.get("_distance", 0.0)
-            similarity = 1.0 - distance
+            # Re-attach score
+            score = concept_scores.get(c_id, 0.0)
 
-            try:
-                concept = Concept(
-                    concept_id=res["concept_id"],
-                    concept_name=res["concept_name"],
-                    domain_id=res["domain_id"],
-                    vocabulary_id=res["vocabulary_id"],
-                    concept_class_id=res["concept_class_id"],
-                    standard_concept=res.get("standard_concept"),
-                    concept_code=res["concept_code"],
-                )
+            # Determine match status
+            is_std = concept.standard_concept == "S"
 
-                # Determine is_standard logic
-                # PRD: "Standard Concepts" usually SNOMED/RxNorm.
-                # PRD Schema: standard_concept: Optional[str] # "S" (Standard) or NULL
-                is_standard = concept.standard_concept == "S"
+            # If it's not standard, we might want to find the mapping, but that's the CrossWalker's job usually.
+            # However, CodexMatch has `mapped_standard_id`.
+            # For this iteration, we leave mapped_standard_id as None unless we do another lookup.
+            # The PRD says: "is_standard: False... mapped_standard_id: 1125315".
+            # This implies the Normalizer *should* try to find the standard mapping if possible.
+            # But the "One Step Rule" suggests keeping logic atomic.
+            # The "CrossWalker" is a separate component.
+            # I will leave mapped_standard_id as None for now to keep this unit focused on "Vector Search + Hydration".
 
-                # Mapped standard ID logic would ideally come from the Concept Relationship/Cross-Walker
-                # For this atomic unit, we might not have it unless it's in the vector store.
-                # PRD says "matches 'Nausea' (ConceptID: 31967)".
-                # If the match itself is non-standard, we need a way to find the standard map.
-                # For now, we will leave mapped_standard_id as None or self if standard.
-                mapped_id = concept.concept_id if is_standard else None
-
-                match = CodexMatch(
+            matches.append(
+                CodexMatch(
                     input_text=text,
                     match_concept=concept,
-                    similarity_score=similarity,
-                    is_standard=is_standard,
-                    mapped_standard_id=mapped_id,
+                    similarity_score=score,
+                    is_standard=is_std,
+                    mapped_standard_id=None,
                 )
-                matches.append(match)
-            except Exception as e:
-                logger.error(f"Failed to map result to Concept: {e}")
-                continue
+            )
+
+        # Sort by score descending
+        matches.sort(key=lambda x: x.similarity_score, reverse=True)
 
         return matches

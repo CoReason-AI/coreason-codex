@@ -8,14 +8,17 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
+import hashlib
+import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Union
 
 import duckdb
 import lancedb
+from loguru import logger
 
 from coreason_codex.interfaces import Embedder
-from coreason_codex.utils.logger import logger
 
 
 class CodexBuilder:
@@ -173,7 +176,8 @@ class CodexBuilder:
                     texts = [row[1] for row in rows]
 
                     try:
-                        embeddings = embedder.embed(texts)
+                        # embed_batch returns List[List[float]]
+                        embeddings = embedder.embed_batch(texts)
                     except Exception as e:
                         logger.error(f"Failed to embed batch: {e}")
                         raise
@@ -185,11 +189,6 @@ class CodexBuilder:
                             "vector": embeddings[i],
                             "concept_id": row[0],
                             "concept_name": row[1],
-                            "domain_id": row[2],
-                            "vocabulary_id": row[3],
-                            "concept_class_id": row[4],
-                            "standard_concept": row[5],
-                            "concept_code": row[6],
                         }
                         batch_data.append(record)
 
@@ -211,3 +210,52 @@ class CodexBuilder:
             raise RuntimeError(f"Vector build failed: {e}") from e
         finally:
             con.close()
+
+    def generate_manifest(self, version: str = "v1.0", source_date: str = "2025-01-01") -> Path:
+        """
+        Generates the manifest.json file by computing checksums.
+        """
+        manifest_path = self.output_dir / "manifest.json"
+
+        checksums: Dict[str, str] = {}
+
+        # 1. vocab.duckdb
+        vocab_path = self.output_dir / "vocab.duckdb"
+        if vocab_path.exists():
+            checksums["vocab.duckdb"] = self._compute_file_hash(vocab_path)
+
+        # 2. vectors.lance
+        # Depending on how lancedb saves, it's either a directory 'vectors.lance' or similar.
+        # If table name was 'vectors', it's likely 'vectors.lance'.
+        vectors_path = self.output_dir / "vectors.lance"
+        if vectors_path.exists():
+            checksums["vectors.lance"] = self._compute_dir_hash(vectors_path)
+
+        manifest_data = {"version": version, "source_date": source_date, "checksums": checksums}
+
+        with open(manifest_path, "w") as f:
+            json.dump(manifest_data, f, indent=2)
+
+        return manifest_path
+
+    def _compute_file_hash(self, p: Path) -> str:
+        sha256 = hashlib.sha256()
+        with open(p, "rb") as f:
+            for b in iter(lambda: f.read(4096), b""):
+                sha256.update(b)
+        return sha256.hexdigest()
+
+    def _compute_dir_hash(self, p: Path) -> str:
+        sha256 = hashlib.sha256()
+        paths = []
+        for root, _, files in os.walk(p):
+            for file in files:
+                full = Path(root) / file
+                rel = full.relative_to(p)
+                paths.append((str(rel), full))
+        paths.sort(key=lambda x: x[0])
+
+        for rel_str, full in paths:
+            sha256.update(rel_str.encode("utf-8"))
+            sha256.update(self._compute_file_hash(full).encode("utf-8"))
+        return sha256.hexdigest()
