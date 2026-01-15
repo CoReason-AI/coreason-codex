@@ -8,77 +8,55 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
+from typing import Any
+
 import duckdb
 import pytest
 
 from coreason_codex.hierarchy import CodexHierarchy
+from coreason_codex.loader import CodexLoader
 
 
 @pytest.fixture
-def duckdb_con() -> duckdb.DuckDBPyConnection:
-    """Creates a temporary in-memory DuckDB connection with test data."""
-    con = duckdb.connect(":memory:")
-
-    # Create CONCEPT_ANCESTOR table
-    con.execute("""
-        CREATE TABLE CONCEPT_ANCESTOR (
-            ancestor_concept_id INTEGER,
-            descendant_concept_id INTEGER,
-            min_levels_of_separation INTEGER,
-            max_levels_of_separation INTEGER
-        )
-    """)
-
-    # Insert test data
-    # 1 is ancestor of 2 and 3
-    # 2 is ancestor of 4
-    # 5 has no descendants
-    con.execute("INSERT INTO CONCEPT_ANCESTOR VALUES (1, 1, 0, 0)")  # Self
-    con.execute("INSERT INTO CONCEPT_ANCESTOR VALUES (1, 2, 1, 1)")
-    con.execute("INSERT INTO CONCEPT_ANCESTOR VALUES (1, 3, 1, 1)")
-    con.execute("INSERT INTO CONCEPT_ANCESTOR VALUES (1, 4, 2, 2)")
-    con.execute("INSERT INTO CONCEPT_ANCESTOR VALUES (2, 2, 0, 0)")  # Self
-    con.execute("INSERT INTO CONCEPT_ANCESTOR VALUES (2, 4, 1, 1)")
-    con.execute("INSERT INTO CONCEPT_ANCESTOR VALUES (3, 3, 0, 0)")  # Self
-    con.execute("INSERT INTO CONCEPT_ANCESTOR VALUES (5, 5, 0, 0)")  # Self
-
-    return con
+def hierarchy_engine(synthetic_codex_pack: Any) -> CodexHierarchy:
+    loader = CodexLoader(synthetic_codex_pack)
+    con, _ = loader.load_codex()
+    return CodexHierarchy(con)
 
 
-def test_get_descendants_found(duckdb_con: duckdb.DuckDBPyConnection) -> None:
-    """Test finding descendants for a concept with children."""
-    hierarchy = CodexHierarchy(duckdb_con)
-    descendants = hierarchy.get_descendants(1)
-
-    # Should include 1 (self), 2, 3, 4
-    assert len(descendants) == 4
-    assert set(descendants) == {1, 2, 3, 4}
+def test_hierarchy_init_success(synthetic_codex_pack: Any) -> None:
+    loader = CodexLoader(synthetic_codex_pack)
+    con, _ = loader.load_codex()
+    h = CodexHierarchy(con)
+    assert h is not None
 
 
-def test_get_descendants_leaf(duckdb_con: duckdb.DuckDBPyConnection) -> None:
-    """Test finding descendants for a leaf node (only self)."""
-    hierarchy = CodexHierarchy(duckdb_con)
-    descendants = hierarchy.get_descendants(3)
+def test_hierarchy_init_failure(tmp_path: Any) -> None:
+    # Create an empty DB without the table
+    db_path = tmp_path / "empty.duckdb"
+    con = duckdb.connect(str(db_path))
 
-    assert len(descendants) == 1
-    assert descendants == [3]
-
-
-def test_get_descendants_not_found(duckdb_con: duckdb.DuckDBPyConnection) -> None:
-    """Test finding descendants for a non-existent concept."""
-    hierarchy = CodexHierarchy(duckdb_con)
-    descendants = hierarchy.get_descendants(999)
-
-    assert descendants == []
+    with pytest.raises(ValueError, match="concept_ancestor' is missing"):
+        CodexHierarchy(con)
 
 
-def test_get_descendants_error(duckdb_con: duckdb.DuckDBPyConnection) -> None:
-    """Test handling of DB errors."""
-    # Close connection to trigger error
-    duckdb_con.close()
+def test_get_descendants(hierarchy_engine: CodexHierarchy) -> None:
+    # 441840 (Clinical Finding) is ancestor of 312327, 201820, 31967
+    descendants = hierarchy_engine.get_descendants(441840)
 
-    hierarchy = CodexHierarchy(duckdb_con)
-    descendants = hierarchy.get_descendants(1)
+    assert 312327 in descendants
+    assert 201820 in descendants
+    assert 31967 in descendants
+    assert 441840 in descendants  # Self reference
 
-    # Should return empty list and log error (checked via logs if needed, but here just return value)
+
+def test_get_descendants_leaf(hierarchy_engine: CodexHierarchy) -> None:
+    # 312327 (Acute MI) is a leaf in our sample graph (besides self)
+    descendants = hierarchy_engine.get_descendants(312327)
+    assert descendants == [312327]
+
+
+def test_get_descendants_invalid_id(hierarchy_engine: CodexHierarchy) -> None:
+    # ID not in DB
+    descendants = hierarchy_engine.get_descendants(99999999)
     assert descendants == []

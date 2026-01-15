@@ -8,9 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from coreason_codex.utils.logger import logger
-
 
 def hello_world() -> str:
-    logger.info("Hello World!")
-    return "Hello World!"
+    """Returns a greeting."""
+    return "Hello, World!"

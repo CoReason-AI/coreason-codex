@@ -11,56 +11,39 @@
 from typing import List
 
 import duckdb
-
-from coreason_codex.utils.logger import logger
+from loguru import logger
 
 
 class CodexHierarchy:
     """
-    Hierarchy Engine that exploits the pre-computed OMOP hierarchy for reasoning.
-    Uses the CONCEPT_ANCESTOR table to find descendants.
+    Handles hierarchical reasoning using the OMOP CONCEPT_ANCESTOR table.
     """
 
-    def __init__(self, con: duckdb.DuckDBPyConnection) -> None:
-        """
-        Initialize the CodexHierarchy.
+    def __init__(self, duckdb_conn: duckdb.DuckDBPyConnection):
+        self.duckdb_conn = duckdb_conn
 
-        Args:
-            con: An initialized DuckDB connection.
-        """
-        self.con = con
+        # Verify table exists
+        try:
+            self.duckdb_conn.execute("SELECT 1 FROM concept_ancestor LIMIT 1")
+        except Exception as e:
+            logger.error(f"Table 'concept_ancestor' not found or invalid: {e}")
+            raise ValueError("Table 'concept_ancestor' is missing in the vocabulary.") from e
 
     def get_descendants(self, concept_id: int) -> List[int]:
         """
-        Get all descendant concept IDs for a given concept ID.
-        Uses the CONCEPT_ANCESTOR table where ancestor_concept_id matches the input.
-
-        Args:
-            concept_id: The ancestor concept ID.
-
-        Returns:
-            A list of descendant concept IDs.
+        Returns a list of descendant concept IDs for a given concept ID.
+        Uses the transitive closure table (concept_ancestor).
+        Includes the concept itself (distance=0).
         """
-        logger.info(f"Fetching descendants for concept_id: {concept_id}")
-
+        query = """
+            SELECT descendant_concept_id
+            FROM concept_ancestor
+            WHERE ancestor_concept_id = ?
+        """
         try:
-            # Query the CONCEPT_ANCESTOR table
-            # We select descendant_concept_id where ancestor_concept_id is the input
-            query = """
-                SELECT descendant_concept_id
-                FROM CONCEPT_ANCESTOR
-                WHERE ancestor_concept_id = ?
-            """
-            results = self.con.execute(query, [concept_id]).fetchall()
-
-            # Extract IDs from the result tuples
-            descendants = [row[0] for row in results]
-
-            logger.info(f"Found {len(descendants)} descendants for {concept_id}")
-            return descendants
-
+            results = self.duckdb_conn.execute(query, [concept_id]).fetchall()
+            # Results is list of tuples [(id,), (id,)]
+            return [r[0] for r in results]
         except Exception as e:
-            logger.error(f"Failed to fetch descendants for {concept_id}: {e}")
-            # Depending on desired behavior, we could raise or return empty list.
-            # Returning empty list is safer for the agent workflow, but logging the error is crucial.
+            logger.error(f"Error querying descendants for {concept_id}: {e}")
             return []

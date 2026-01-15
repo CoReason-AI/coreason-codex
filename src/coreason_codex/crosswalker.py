@@ -8,91 +8,86 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from typing import List
+from typing import List, Optional
 
 import duckdb
+from loguru import logger
 
 from coreason_codex.schemas import Concept
-from coreason_codex.utils.logger import logger
 
 
 class CodexCrossWalker:
     """
-    Cross-Walker that maps concepts between vocabularies.
-    Uses the CONCEPT_RELATIONSHIP and CONCEPT tables.
+    Handles translation between vocabularies using the OMOP CONCEPT_RELATIONSHIP table.
     """
 
-    def __init__(self, con: duckdb.DuckDBPyConnection) -> None:
+    def __init__(self, duckdb_conn: duckdb.DuckDBPyConnection):
+        self.duckdb_conn = duckdb_conn
+
+        # Verify table exists
+        try:
+            self.duckdb_conn.execute("SELECT 1 FROM concept_relationship LIMIT 1")
+        except Exception as e:
+            logger.error(f"Table 'concept_relationship' not found or invalid: {e}")
+            raise ValueError("Table 'concept_relationship' is missing in the vocabulary.") from e
+
+    def translate_code(
+        self, source_id: int, relationship_id: str = "Maps to", target_vocabulary_id: Optional[str] = None
+    ) -> List[Concept]:
         """
-        Initialize the CodexCrossWalker.
+        Translates a source concept ID to target concept(s) via a specific relationship.
+        Useful for mapping ICD-10 to SNOMED (Maps to) or ATC to RxNorm.
 
         Args:
-            con: An initialized DuckDB connection.
-        """
-        self.con = con
-
-    def translate_code(self, source_id: int, target_vocabulary: str) -> List[Concept]:
-        """
-        Maps a source concept to concepts in the target vocabulary.
-        Typically traverses 'Maps to' or 'Maps to value' relationships.
-
-        Args:
-            source_id: The source concept ID.
-            target_vocabulary: The target vocabulary ID (e.g., 'ICD10CM', 'SNOMED').
+            source_id: The Concept ID to translate from.
+            relationship_id: The relationship type (default: "Maps to").
+            target_vocabulary_id: Optional filter for target vocabulary (e.g. "SNOMED").
 
         Returns:
-            A list of matching Concept objects in the target vocabulary.
+            List[Concept]: The translated target concepts.
         """
-        logger.info(f"Translating concept {source_id} to vocabulary {target_vocabulary}")
+        query = """
+            SELECT
+                c.concept_id,
+                c.concept_name,
+                c.domain_id,
+                c.vocabulary_id,
+                c.concept_class_id,
+                c.standard_concept,
+                c.concept_code
+            FROM concept_relationship cr
+            JOIN concept c ON cr.concept_id_2 = c.concept_id
+            WHERE cr.concept_id_1 = ?
+              AND cr.relationship_id = ?
+              AND cr.invalid_reason IS NULL
+              AND c.invalid_reason IS NULL
+        """
+
+        params = [source_id, relationship_id]
+
+        if target_vocabulary_id:
+            query += " AND c.vocabulary_id = ?"
+            params.append(target_vocabulary_id)
 
         try:
-            # Query Logic:
-            # 1. Join CONCEPT_RELATIONSHIP (cr) on concept_id_1 = source_id
-            # 2. Join CONCEPT (c) on c.concept_id = cr.concept_id_2
-            # 3. Filter where c.vocabulary_id = target_vocabulary
-            # 4. Filter for valid relationships (usually 'Maps to', 'Maps to value', or standard mapping)
-            #    For broad translation, we might not strictly filter relationship_id unless specified.
-            #    PRD says: SNOMED ID -> Maps to (inverse) -> ICD-10 Code.
-            #    So we are looking for valid relationships.
-            #    Let's select relevant columns to build Concept objects.
+            cursor = self.duckdb_conn.execute(query, params)
+            rows = cursor.fetchall()
 
-            query = """
-                SELECT
-                    c.concept_id,
-                    c.concept_name,
-                    c.domain_id,
-                    c.vocabulary_id,
-                    c.concept_class_id,
-                    c.standard_concept,
-                    c.concept_code
-                FROM CONCEPT_RELATIONSHIP cr
-                JOIN CONCEPT c ON cr.concept_id_2 = c.concept_id
-                WHERE cr.concept_id_1 = ?
-                  AND c.vocabulary_id = ?
-                  AND cr.invalid_reason IS NULL
-                  AND c.invalid_reason IS NULL
-            """
-
-            # Note: We assume standard OMOP schemas where invalid_reason IS NULL means active.
-
-            results = self.con.execute(query, [source_id, target_vocabulary]).fetchall()
-
-            concepts: List[Concept] = []
-            for row in results:
-                concept = Concept(
-                    concept_id=row[0],
-                    concept_name=row[1],
-                    domain_id=row[2],
-                    vocabulary_id=row[3],
-                    concept_class_id=row[4],
-                    standard_concept=row[5],
-                    concept_code=row[6],
+            concepts = []
+            for row in rows:
+                concepts.append(
+                    Concept(
+                        concept_id=row[0],
+                        concept_name=row[1],
+                        domain_id=row[2],
+                        vocabulary_id=row[3],
+                        concept_class_id=row[4],
+                        standard_concept=row[5],
+                        concept_code=row[6],
+                    )
                 )
-                concepts.append(concept)
-
-            logger.info(f"Found {len(concepts)} translations for {source_id} in {target_vocabulary}")
             return concepts
 
         except Exception as e:
-            logger.error(f"Failed to translate concept {source_id}: {e}")
+            logger.error(f"Error translating code {source_id}: {e}")
             return []
