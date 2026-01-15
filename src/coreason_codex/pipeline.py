@@ -85,3 +85,11 @@ def codex_translate_code(source_id: int, target_vocabulary: Optional[str] = None
     """
     ctx = CodexContext.get_instance()
     return ctx.crosswalker.translate_code(source_id, target_vocabulary_id=target_vocabulary)
+
+
+def codex_check_relationship(concept_id_1: int, concept_id_2: int, relationship_id: str) -> bool:
+    """
+    Checks if a specific relationship exists between two concepts.
+    """
+    ctx = CodexContext.get_instance()
+    return ctx.crosswalker.check_relationship(concept_id_1, concept_id_2, relationship_id)
