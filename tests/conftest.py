@@ -8,6 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
+import csv
 import hashlib
 import json
 import os
@@ -197,3 +198,49 @@ def synthetic_codex_pack(tmp_path: Path, mock_embedder: Embedder) -> Generator[P
         json.dump(manifest_data, f, indent=2)
 
     yield pack_dir
+
+
+@pytest.fixture
+def source_csvs(tmp_path: Path) -> Path:
+    src = tmp_path / "athena_src"
+    src.mkdir()
+
+    # Create CONCEPT.csv
+    # Headers: concept_id,concept_name,domain_id,vocabulary_id,
+    # concept_class_id,standard_concept,concept_code,invalid_reason
+    with open(src / "CONCEPT.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "concept_id",
+                "concept_name",
+                "domain_id",
+                "vocabulary_id",
+                "concept_class_id",
+                "standard_concept",
+                "concept_code",
+                "invalid_reason",
+            ]
+        )
+        writer.writerow(
+            [312327, "Acute myocardial infarction", "Condition", "SNOMED", "Clinical Finding", "S", "22298006", ""]
+        )
+        writer.writerow([1503297, "Metformin", "Drug", "RxNorm", "Ingredient", "S", "6809", ""])
+
+    # Create CONCEPT_ANCESTOR.csv
+    with open(src / "CONCEPT_ANCESTOR.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["ancestor_concept_id", "descendant_concept_id", "min_levels_of_separation", "max_levels_of_separation"]
+        )
+        writer.writerow([312327, 312327, 0, 0])
+
+    # Create CONCEPT_RELATIONSHIP.csv
+    with open(src / "CONCEPT_RELATIONSHIP.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["concept_id_1", "concept_id_2", "relationship_id", "valid_start_date", "valid_end_date", "invalid_reason"]
+        )
+        writer.writerow([312327, 312327, "Maps to", "1970-01-01", "2099-12-31", ""])
+
+    return src

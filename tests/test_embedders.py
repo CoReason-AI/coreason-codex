@@ -52,8 +52,14 @@ def test_sapbert_embed_single(mock_sentence_transformer: Any) -> None:
     assert isinstance(vector[0], float)
 
     # Verify mock call
-    # Use explicit cast or ignore if mypy complains about assert_called_with on Any/MagicMock
     embedder.model.encode.assert_called_with(text, convert_to_numpy=True)  # type: ignore
+
+
+def test_sapbert_embed_single_empty(mock_sentence_transformer: Any) -> None:
+    embedder = SapBertEmbedder()
+    # It passes empty string to model.encode
+    embedder.embed("")
+    embedder.model.encode.assert_called_with("", convert_to_numpy=True)  # type: ignore
 
 
 def test_sapbert_embed_batch(mock_sentence_transformer: Any) -> None:
@@ -67,6 +73,11 @@ def test_sapbert_embed_batch(mock_sentence_transformer: Any) -> None:
 
     # Verify mock call
     embedder.model.encode.assert_called_with(texts, convert_to_numpy=True, show_progress_bar=False)  # type: ignore
+
+
+def test_sapbert_embed_batch_empty(mock_sentence_transformer: Any) -> None:
+    embedder = SapBertEmbedder()
+    assert embedder.embed_batch([]) == []
 
 
 def test_sapbert_init_failure() -> None:

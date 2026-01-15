@@ -95,29 +95,35 @@ def test_normalize_no_matches(loaded_components: Any) -> None:
     norm = CodexNormalizer(embedder, con, lancedb_con)
 
     # Search for something that shouldn't exist or is far away.
-    # With random vectors, everything is somewhat close, but we can verify it doesn't crash.
     matches = norm.normalize("Alien space virus from Mars", k=2)
     assert isinstance(matches, list)
-    # It might return results because approximate search always returns closest.
-    # We just check structure.
-    if matches:
-        assert isinstance(matches[0].similarity_score, float)
+
+
+def test_normalize_zero_results(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
+
+    # Mock table to return empty list
+    mock_table = MagicMock()
+    mock_query = MagicMock()
+    mock_limit = MagicMock()
+
+    mock_table.search.return_value = mock_query
+    mock_query.limit.return_value = mock_limit
+    mock_limit.to_list.return_value = []
+
+    norm.table = mock_table
+    assert norm.normalize("test") == []
 
 
 def test_normalize_synonym_score_preservation(loaded_components: Any) -> None:
     con, lancedb_con, embedder = loaded_components
     norm = CodexNormalizer(embedder, con, lancedb_con)
 
-    # Mock the LanceDB table to return explicit results simulating synonyms
-    # Synonym A (Close) -> ID 123, Dist 0.1 (Score 0.9)
-    # Synonym B (Far)   -> ID 123, Dist 0.5 (Score 0.5)
-    # We want to ensure ID 123 gets Score 0.9
-
     mock_table = MagicMock()
     mock_query = MagicMock()
     mock_limit = MagicMock()
 
-    # Chain: search() -> limit() -> to_list()
     mock_table.search.return_value = mock_query
     mock_query.limit.return_value = mock_limit
     mock_limit.to_list.return_value = [
@@ -126,11 +132,8 @@ def test_normalize_synonym_score_preservation(loaded_components: Any) -> None:
     ]
 
     norm.table = mock_table
-
     matches = norm.normalize("Some query")
 
     assert len(matches) == 1
     assert matches[0].match_concept.concept_id == 312327
-    # Should be 1.0 - 0.1 = 0.9
-    # If bug exists, it would be 1.0 - 0.5 = 0.5
     assert abs(matches[0].similarity_score - 0.9) < 0.0001

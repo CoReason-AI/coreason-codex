@@ -82,9 +82,6 @@ class CodexNormalizer:
 
         concept_ids = list(concept_scores.keys())
 
-        if not concept_ids:
-            return []
-
         # 3. Hydrate from DuckDB
         # We query the concept details.
         # Note: We enforce standard concept status if desired, but usually normalizer returns what matches.
