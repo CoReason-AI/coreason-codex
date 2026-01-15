@@ -94,9 +94,14 @@ def test_check_relationship_invalid(tmp_path: Any) -> None:
     con = duckdb.connect(str(db_path))
 
     # Create schema (minimal for check_relationship)
-    con.execute(
-        "CREATE TABLE concept_relationship (concept_id_1 INTEGER, concept_id_2 INTEGER, relationship_id VARCHAR, invalid_reason VARCHAR)"
-    )
+    con.execute("""
+        CREATE TABLE concept_relationship (
+            concept_id_1 INTEGER,
+            concept_id_2 INTEGER,
+            relationship_id VARCHAR,
+            invalid_reason VARCHAR
+        )
+    """)
 
     # Insert invalid row (invalid_reason = 'D')
     con.execute("INSERT INTO concept_relationship VALUES (1, 2, 'Bad', 'D')")
