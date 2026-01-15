@@ -8,98 +8,80 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
+
+from loguru import logger
 
 from coreason_codex.crosswalker import CodexCrossWalker
 from coreason_codex.embedders import SapBertEmbedder
 from coreason_codex.hierarchy import CodexHierarchy
 from coreason_codex.loader import CodexLoader
 from coreason_codex.normalizer import CodexNormalizer
-from coreason_codex.utils.logger import logger
+from coreason_codex.schemas import CodexMatch, Concept
 
 
-@dataclass
 class CodexContext:
-    """Holds the initialized components of the Codex system."""
+    """
+    Global context/singleton for accessing Codex services.
+    """
 
-    normalizer: CodexNormalizer
-    hierarchy: CodexHierarchy
-    crosswalker: CodexCrossWalker
+    _instance: Optional["CodexContext"] = None
+
+    def __init__(self, pack_path: str):
+        logger.info(f"Initializing Codex Context with pack: {pack_path}")
+        self.loader = CodexLoader(pack_path)
+        self.duckdb_conn, self.lancedb_conn = self.loader.load_codex()
+
+        # Initialize components
+        # Note: We use SapBertEmbedder by default. In a real app, this might be injected.
+        self.embedder = SapBertEmbedder()
+
+        self.normalizer = CodexNormalizer(
+            embedder=self.embedder, duckdb_conn=self.duckdb_conn, lancedb_conn=self.lancedb_conn
+        )
+
+        self.hierarchy = CodexHierarchy(duckdb_conn=self.duckdb_conn)
+
+        self.crosswalker = CodexCrossWalker(duckdb_conn=self.duckdb_conn)
+
+    @classmethod
+    def initialize(cls, pack_path: str) -> None:
+        cls._instance = cls(pack_path)
+
+    @classmethod
+    def get_instance(cls) -> "CodexContext":
+        if cls._instance is None:
+            raise RuntimeError("CodexContext not initialized. Call initialize() first.")
+        return cls._instance
 
 
-# Global singleton
-_CONTEXT: Optional[CodexContext] = None
+# --- Public API Functions (MCP Tools) ---
 
 
 def initialize(pack_path: str) -> None:
+    """Initializes the Codex system."""
+    CodexContext.initialize(pack_path)
+
+
+def codex_normalize(text: str, domain_filter: Optional[str] = None) -> List[CodexMatch]:
     """
-    Initialize the Codex system with the specified artifact pack.
-    Loads artifacts, initializes embedders, and sets up core engines.
-
-    Args:
-        pack_path: Path to the Codex Pack directory.
-
-    Raises:
-        FileNotFoundError: If the pack path does not exist.
-        ValueError: If the pack integrity check fails.
-        RuntimeError: If initialization fails.
+    Normalizes text to Standard Concepts.
     """
-    global _CONTEXT
-    logger.info(f"Initializing Codex with pack: {pack_path}")
-
-    try:
-        # 1. Load Artifacts
-        loader = CodexLoader(pack_path)
-        duckdb_con, lancedb_con = loader.load_codex()
-
-        # 2. Initialize Embedder
-        # This is a heavy operation, done synchronously as per requirements
-        embedder = SapBertEmbedder()
-
-        # 3. Initialize Engines
-        # Open the vectors table. Assuming table name 'vectors' from builder defaults.
-        # We need to list tables or just try to open it.
-        # CodexBuilder uses "vectors" by default.
-        # lancedb connection object allows opening table.
-        try:
-            vector_table = lancedb_con.open_table("vectors")
-        except Exception:
-            # Fallback or check if table exists logic might be needed if table name varies
-            # But for now we assume "vectors"
-            logger.warning("Table 'vectors' not found, checking available tables...")
-            # If using older lancedb, table_names() returns list.
-            # If newer, verify.
-            # Assuming 'vectors' is strictly required.
-            raise ValueError("Vector table 'vectors' not found in LanceDB artifact.") from None
-
-        normalizer = CodexNormalizer(table=vector_table, embedder=embedder)
-        hierarchy = CodexHierarchy(con=duckdb_con)
-        crosswalker = CodexCrossWalker(con=duckdb_con)
-
-        # 4. Set Global Context
-        _CONTEXT = CodexContext(
-            normalizer=normalizer,
-            hierarchy=hierarchy,
-            crosswalker=crosswalker,
-        )
-        logger.info("Codex initialization complete.")
-
-    except Exception as e:
-        logger.exception("Failed to initialize Codex")
-        raise RuntimeError(f"Codex initialization failed: {e}") from e
+    ctx = CodexContext.get_instance()
+    return ctx.normalizer.normalize(text, domain_filter=domain_filter)
 
 
-def get_context() -> CodexContext:
+def codex_get_descendants(concept_id: int) -> List[int]:
     """
-    Retrieve the initialized Codex context.
-
-    Returns:
-        The active CodexContext.
-
-    Raises:
-        RuntimeError: If Codex has not been initialized.
+    Returns a list of descendant concept IDs.
     """
-    if _CONTEXT is None:
-        raise RuntimeError("Codex not initialized. Call initialize() first.")
-    return _CONTEXT
+    ctx = CodexContext.get_instance()
+    return ctx.hierarchy.get_descendants(concept_id)
+
+
+def codex_translate_code(source_id: int, target_vocabulary: Optional[str] = None) -> List[Concept]:
+    """
+    Translates a concept ID to another vocabulary (e.g. SNOMED).
+    """
+    ctx = CodexContext.get_instance()
+    return ctx.crosswalker.translate_code(source_id, target_vocabulary_id=target_vocabulary)

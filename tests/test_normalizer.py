@@ -8,221 +8,132 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-import shutil
-from pathlib import Path
-from typing import Generator, List, Tuple
+from typing import Any, Tuple
+from unittest.mock import MagicMock
 
-import lancedb
-import numpy as np
+import duckdb
 import pytest
 
 from coreason_codex.interfaces import Embedder
+from coreason_codex.loader import CodexLoader
 from coreason_codex.normalizer import CodexNormalizer
 
 
-class MockEmbedder(Embedder):
-    """Deterministic mock embedder for testing."""
-
-    def __init__(self, dim: int = 4) -> None:
-        self.dim = dim
-
-    def embed(self, texts: List[str]) -> np.ndarray:
-        # Deterministic embedding based on text length/chars to ensure stability
-        embeddings = []
-        for text in texts:
-            # Create a simple deterministic vector
-            val = sum(ord(c) for c in text) % 100 / 100.0
-            vec = np.array([val] * self.dim, dtype=np.float32)
-            # Normalize to unit length for cosine similarity
-            norm = np.linalg.norm(vec)
-            if norm > 0:
-                vec = vec / norm
-            embeddings.append(vec)
-        return np.array(embeddings)
-
-
 @pytest.fixture
-def temp_lancedb(tmp_path: Path) -> Generator[lancedb.table.Table, None, None]:
-    """Create a temporary LanceDB table with dummy data."""
-    db_path = tmp_path / "lancedb"
-    db = lancedb.connect(db_path)
-
-    # Define dummy data
-    # We need a vector column. MockEmbedder(dim=4)
-    # Let's say "Headache" -> val roughly 0.5 -> [0.5, 0.5, 0.5, 0.5] normalized
-
-    data = [
-        {
-            "vector": [0.5, 0.5, 0.5, 0.5],
-            "concept_id": 1001,
-            "concept_name": "Headache",
-            "domain_id": "Condition",
-            "vocabulary_id": "SNOMED",
-            "concept_class_id": "Clinical Finding",
-            "standard_concept": "S",
-            "concept_code": "12345",
-        },
-        {
-            "vector": [0.6, 0.6, 0.6, 0.6],  # Close to Headache
-            "concept_id": 1002,
-            "concept_name": "Cephalalgia",
-            "domain_id": "Condition",
-            "vocabulary_id": "ICD10",
-            "concept_class_id": "Diagnosis",
-            "standard_concept": None,  # Non-standard
-            "concept_code": "R51",
-        },
-        {
-            "vector": [0.1, 0.1, 0.1, 0.1],  # Different
-            "concept_id": 2001,
-            "concept_name": "Aspirin",
-            "domain_id": "Drug",
-            "vocabulary_id": "RxNorm",
-            "concept_class_id": "Ingredient",
-            "standard_concept": "S",
-            "concept_code": "1191",
-        },
-    ]
-
-    tbl = db.create_table("concepts", data=data)
-    yield tbl
-    shutil.rmtree(db_path, ignore_errors=True)
+def loaded_components(synthetic_codex_pack: Any, mock_embedder: Any) -> Tuple[duckdb.DuckDBPyConnection, Any, Embedder]:
+    """
+    Returns (duckdb_conn, lancedb_conn, embedder)
+    """
+    loader = CodexLoader(synthetic_codex_pack)
+    con, lancedb_con = loader.load_codex()
+    return con, lancedb_con, mock_embedder
 
 
-def test_normalizer_finds_match(temp_lancedb: lancedb.table.Table) -> None:
-    embedder = MockEmbedder(dim=4)
-    normalizer = CodexNormalizer(temp_lancedb, embedder)
-    # This test was empty in previous iteration, completing it or relying on others
-    matches = normalizer.normalize("Headache")
-    assert len(matches) > 0
+def test_normalizer_init(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
+    assert norm is not None
 
 
-@pytest.fixture
-def temp_lancedb_with_embedder(tmp_path: Path) -> Generator[Tuple[lancedb.table.Table, Embedder], None, None]:
-    """Create a temporary LanceDB table with data embedded by MockEmbedder."""
-    db_path = tmp_path / "lancedb_embedded"
-    db = lancedb.connect(db_path)
-    embedder = MockEmbedder(dim=4)
-
-    # Define concepts
-    concepts = [
-        ("Headache", "Condition", "S", 1001),
-        ("Cephalalgia", "Condition", None, 1002),
-        ("Aspirin", "Drug", "S", 2001),
-        ("Tylenol", "Drug", None, 2002),
-    ]
-
-    data = []
-    for name, domain, std, cid in concepts:
-        vec = embedder.embed([name])[0]
-        data.append(
-            {
-                "vector": vec,
-                "concept_id": cid,
-                "concept_name": name,
-                "domain_id": domain,
-                "vocabulary_id": "Mixed",
-                "concept_class_id": "Test",
-                "standard_concept": std,
-                "concept_code": f"C{cid}",
-            }
-        )
-
-    tbl = db.create_table("concepts", data=data)
-    yield tbl, embedder
-    shutil.rmtree(db_path, ignore_errors=True)
+def test_normalizer_init_bad_table(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    # Try to init with non-existent table
+    with pytest.raises(ValueError, match="not found"):
+        CodexNormalizer(embedder, con, lancedb_con, vector_table_name="non_existent_table")
 
 
-def test_normalizer_exact_match(temp_lancedb_with_embedder: Tuple[lancedb.table.Table, Embedder]) -> None:
-    table, embedder = temp_lancedb_with_embedder
-    normalizer = CodexNormalizer(table, embedder)
+def test_normalize_exact_match(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
 
-    matches = normalizer.normalize("Headache")
+    # Search for "Acute myocardial infarction" (Concept 312327)
+    # Since we use a deterministic MockEmbedder, the vector for the exact string will match perfectly.
+    query = "Acute myocardial infarction"
+    matches = norm.normalize(query, k=5)
+
     assert len(matches) > 0
     top_match = matches[0]
 
-    assert top_match.match_concept.concept_name == "Headache"
-    assert top_match.match_concept.concept_id == 1001
+    assert top_match.match_concept.concept_id == 312327
+    assert top_match.match_concept.concept_name == "Acute myocardial infarction"
+    # Similarity should be very close to 1.0 (since dist is 0)
+    assert top_match.similarity_score > 0.99
     assert top_match.is_standard is True
-    assert top_match.similarity_score > 0.99  # Should be practically 1.0
 
 
-def test_normalizer_domain_filter(temp_lancedb_with_embedder: Tuple[lancedb.table.Table, Embedder]) -> None:
-    table, embedder = temp_lancedb_with_embedder
-    normalizer = CodexNormalizer(table, embedder)
+def test_normalize_domain_filtering(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
 
-    # "Aspirin" is a Drug. If we filter by "Condition", we shouldn't find it,
-    # or we should find "Headache" if it's somewhat close?
-    # MockEmbedder is character based. "Aspirin" vs "Headache".
-    # Let's search for "Aspirin" but filter "Condition".
+    # "Metformin" is a Drug (1503297).
+    query = "Metformin"
 
-    matches = normalizer.normalize("Aspirin", domain_filter="Condition")
+    # 1. Search without filter
+    matches_all = norm.normalize(query, k=5)
+    # Should find it
+    found = any(m.match_concept.concept_id == 1503297 for m in matches_all)
+    assert found
 
-    # Should NOT return Aspirin (Drug)
-    for match in matches:
-        assert match.match_concept.domain_id == "Condition"
-        assert match.match_concept.concept_name != "Aspirin"
+    # 2. Search WITH filter "Condition"
+    # Metformin is a Drug, so it should be filtered out.
+    matches_filtered = norm.normalize(query, k=5, domain_filter="Condition")
 
-
-def test_normalizer_strict_typing(temp_lancedb_with_embedder: Tuple[lancedb.table.Table, Embedder]) -> None:
-    table, embedder = temp_lancedb_with_embedder
-    normalizer = CodexNormalizer(table, embedder)
-
-    matches = normalizer.normalize("Headache")
-    concept = matches[0].match_concept
-
-    assert isinstance(concept.concept_id, int)
-    assert isinstance(concept.concept_name, str)
+    # Should NOT find it
+    found_filtered = any(m.match_concept.concept_id == 1503297 for m in matches_filtered)
+    assert not found_filtered
 
 
-def test_empty_embeddings() -> None:
-    """Test handling of empty embeddings."""
-
-    class EmptyEmbedder(Embedder):
-        def embed(self, texts: List[str]) -> np.ndarray:
-            return np.array([])
-
-    embedder = EmptyEmbedder()
-    # Mock table (not used)
-    normalizer = CodexNormalizer(None, embedder)
-
-    matches = normalizer.normalize("test")
-    assert matches == []
+def test_normalize_empty_input(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
+    assert norm.normalize("") == []
+    assert norm.normalize("   ") == []
 
 
-def test_normalizer_malformed_data(tmp_path: Path) -> None:
-    """Test handling of malformed data in LanceDB."""
-    db_path = tmp_path / "lancedb_malformed"
-    db = lancedb.connect(db_path)
-    embedder = MockEmbedder(dim=4)
+def test_normalize_no_matches(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
 
-    # Create data with missing required field (e.g. concept_id is a string "invalid" or missing)
-    # LanceDB is schema-less on insert usually unless defined, but Pydantic will complain.
-    # Note: LanceDB might enforce types if we define schema, but here we just pass dicts.
+    # Search for something that shouldn't exist or is far away.
+    matches = norm.normalize("Alien space virus from Mars", k=2)
+    assert isinstance(matches, list)
 
-    vec = embedder.embed(["Malformed"])[0]
-    data = [
-        {
-            "vector": vec,
-            # concept_id is missing/wrong type
-            "concept_id": "NOT_AN_INT",
-            "concept_name": "Malformed Concept",
-            "domain_id": "Error",
-            "vocabulary_id": "ERR",
-            "concept_class_id": "Err",
-            "standard_concept": None,
-            "concept_code": "E1",
-        }
+
+def test_normalize_zero_results(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
+
+    # Mock table to return empty list
+    mock_table = MagicMock()
+    mock_query = MagicMock()
+    mock_limit = MagicMock()
+
+    mock_table.search.return_value = mock_query
+    mock_query.limit.return_value = mock_limit
+    mock_limit.to_list.return_value = []
+
+    norm.table = mock_table
+    assert norm.normalize("test") == []
+
+
+def test_normalize_synonym_score_preservation(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
+
+    mock_table = MagicMock()
+    mock_query = MagicMock()
+    mock_limit = MagicMock()
+
+    mock_table.search.return_value = mock_query
+    mock_query.limit.return_value = mock_limit
+    mock_limit.to_list.return_value = [
+        {"concept_id": 312327, "_distance": 0.1},  # First match (Best)
+        {"concept_id": 312327, "_distance": 0.5},  # Second match (Worst)
     ]
 
-    tbl = db.create_table("concepts_malformed", data=data)
+    norm.table = mock_table
+    matches = norm.normalize("Some query")
 
-    normalizer = CodexNormalizer(tbl, embedder)
-
-    # This should trigger the exception block but continue
-    matches = normalizer.normalize("Malformed")
-
-    # Should handle the error gracefully and return empty list (since the only result failed)
-    assert len(matches) == 0
-
-    shutil.rmtree(db_path, ignore_errors=True)
+    assert len(matches) == 1
+    assert matches[0].match_concept.concept_id == 312327
+    assert abs(matches[0].similarity_score - 0.9) < 0.0001
