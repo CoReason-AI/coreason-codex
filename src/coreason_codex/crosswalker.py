@@ -91,3 +91,33 @@ class CodexCrossWalker:
         except Exception as e:
             logger.error(f"Error translating code {source_id}: {e}")
             return []
+
+    def check_relationship(self, concept_id_1: int, concept_id_2: int, relationship_id: str) -> bool:
+        """
+        Checks if a specific relationship exists between two concepts.
+        Useful for verification (e.g. "Does Drug X treat Condition Y?").
+
+        Args:
+            concept_id_1: Source Concept ID.
+            concept_id_2: Target Concept ID.
+            relationship_id: The relationship type (e.g. "Indication - Drug").
+
+        Returns:
+            bool: True if the relationship exists and is valid, False otherwise.
+        """
+        query = """
+            SELECT 1
+            FROM concept_relationship
+            WHERE concept_id_1 = ?
+              AND concept_id_2 = ?
+              AND relationship_id = ?
+              AND invalid_reason IS NULL
+            LIMIT 1
+        """
+
+        try:
+            result = self.duckdb_conn.execute(query, [concept_id_1, concept_id_2, relationship_id]).fetchone()
+            return result is not None
+        except Exception as e:
+            logger.error(f"Error checking relationship between {concept_id_1} and {concept_id_2}: {e}")
+            return False

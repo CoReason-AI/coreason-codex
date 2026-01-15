@@ -15,6 +15,7 @@ import pytest
 
 from coreason_codex.pipeline import (
     CodexContext,
+    codex_check_relationship,
     codex_get_descendants,
     codex_normalize,
     codex_translate_code,
@@ -90,3 +91,10 @@ def test_codex_translate_code_proxy(mock_context: Any) -> None:
     res = codex_translate_code(1, target_vocabulary="SNOMED")
     assert res == [expected_concept]
     mock_context.crosswalker.translate_code.assert_called_with(1, target_vocabulary_id="SNOMED")
+
+
+def test_codex_check_relationship_proxy(mock_context: Any) -> None:
+    mock_context.crosswalker.check_relationship = MagicMock(return_value=True)
+    res = codex_check_relationship(1, 2, "Rel")
+    assert res is True
+    mock_context.crosswalker.check_relationship.assert_called_with(1, 2, "Rel")
