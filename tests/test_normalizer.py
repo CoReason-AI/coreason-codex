@@ -17,6 +17,7 @@ import pytest
 from coreason_codex.interfaces import Embedder
 from coreason_codex.loader import CodexLoader
 from coreason_codex.normalizer import CodexNormalizer
+from coreason_codex.schemas import CodexMatch, Concept
 
 
 @pytest.fixture
@@ -137,3 +138,51 @@ def test_normalize_synonym_score_preservation(loaded_components: Any) -> None:
     assert len(matches) == 1
     assert matches[0].match_concept.concept_id == 312327
     assert abs(matches[0].similarity_score - 0.9) < 0.0001
+
+
+def test_normalize_non_standard_mapping(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
+
+    # Search for "Acute myocardial infarction, unspecified" (Concept 999999)
+    # This is non-standard and maps to 312327.
+    query = "Acute myocardial infarction, unspecified"
+    matches = norm.normalize(query, k=5)
+
+    assert len(matches) > 0
+
+    # Find the specific match for 999999
+    match_999999 = next((m for m in matches if m.match_concept.concept_id == 999999), None)
+    assert match_999999 is not None
+    assert match_999999.is_standard is False
+    assert match_999999.mapped_standard_id == 312327
+
+
+def test_hydrate_mapped_standard_ids_exception(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
+
+    # Create a real match that is non-standard
+    concept = Concept(
+        concept_id=12345,
+        concept_name="Test",
+        domain_id="Condition",
+        vocabulary_id="Test",
+        concept_class_id="Test",
+        standard_concept=None,
+        concept_code="123",
+    )
+    match = CodexMatch(
+        input_text="test", match_concept=concept, similarity_score=0.9, is_standard=False, mapped_standard_id=None
+    )
+    matches = [match]
+
+    # Force an exception during DuckDB execution by mocking the connection
+    norm.duckdb_conn = MagicMock()
+    norm.duckdb_conn.execute.side_effect = Exception("DB Error")
+
+    # Should not raise exception, but log warning
+    norm._hydrate_mapped_standard_ids(matches)
+
+    # Verify no mapping happened
+    assert match.mapped_standard_id is None

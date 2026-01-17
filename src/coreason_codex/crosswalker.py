@@ -75,17 +75,7 @@ class CodexCrossWalker:
 
             concepts = []
             for row in rows:
-                concepts.append(
-                    Concept(
-                        concept_id=row[0],
-                        concept_name=row[1],
-                        domain_id=row[2],
-                        vocabulary_id=row[3],
-                        concept_class_id=row[4],
-                        standard_concept=row[5],
-                        concept_code=row[6],
-                    )
-                )
+                concepts.append(Concept.from_row(row))
             return concepts
 
         except Exception as e:
