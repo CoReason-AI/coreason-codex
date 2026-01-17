@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from typing import Any, Tuple
+from typing import Any, List, Optional, Tuple
 from unittest.mock import MagicMock
 
 import duckdb
@@ -180,7 +180,7 @@ def test_normalize_mapped_standard_error(loaded_components: Any) -> None:
 
     real_execute = con.execute
 
-    def side_effect(query: str, params: list = None):
+    def side_effect(query: str, params: Optional[List[Any]] = None) -> Any:
         if "concept_relationship" in query:
             raise RuntimeError("Database exploded")
         return real_execute(query, params)
