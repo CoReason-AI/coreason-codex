@@ -17,6 +17,7 @@ import pytest
 from coreason_codex.interfaces import Embedder
 from coreason_codex.loader import CodexLoader
 from coreason_codex.normalizer import CodexNormalizer
+from coreason_codex.schemas import CodexMatch, Concept
 
 
 @pytest.fixture
@@ -156,20 +157,25 @@ def test_normalize_non_standard_mapping(loaded_components: Any) -> None:
     assert match_999999.is_standard is False
     assert match_999999.mapped_standard_id == 312327
 
+
 def test_hydrate_mapped_standard_ids_exception(loaded_components: Any) -> None:
     con, lancedb_con, embedder = loaded_components
     norm = CodexNormalizer(embedder, con, lancedb_con)
 
-    # Create a mock match that is non-standard
-    mock_concept = MagicMock()
-    mock_concept.concept_id = 12345
-
-    mock_match = MagicMock()
-    mock_match.match_concept = mock_concept
-    mock_match.is_standard = False
-    mock_match.mapped_standard_id = None
-
-    matches = [mock_match]
+    # Create a real match that is non-standard
+    concept = Concept(
+        concept_id=12345,
+        concept_name="Test",
+        domain_id="Condition",
+        vocabulary_id="Test",
+        concept_class_id="Test",
+        standard_concept=None,
+        concept_code="123",
+    )
+    match = CodexMatch(
+        input_text="test", match_concept=concept, similarity_score=0.9, is_standard=False, mapped_standard_id=None
+    )
+    matches = [match]
 
     # Force an exception during DuckDB execution by mocking the connection
     norm.duckdb_conn = MagicMock()
@@ -179,4 +185,4 @@ def test_hydrate_mapped_standard_ids_exception(loaded_components: Any) -> None:
     norm._hydrate_mapped_standard_ids(matches)
 
     # Verify no mapping happened
-    assert mock_match.mapped_standard_id is None
+    assert match.mapped_standard_id is None
