@@ -137,3 +137,66 @@ def test_normalize_synonym_score_preservation(loaded_components: Any) -> None:
     assert len(matches) == 1
     assert matches[0].match_concept.concept_id == 312327
     assert abs(matches[0].similarity_score - 0.9) < 0.0001
+
+
+def test_normalize_mapped_standard(loaded_components: Any) -> None:
+    """
+    Test that searching for a non-standard concept (ICD10 I21.9)
+    returns the mapped standard concept ID (SNOMED 312327).
+    """
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
+
+    # 999999 is "Acute myocardial infarction, unspecified" (ICD10 I21.9)
+    # It maps to 312327 (SNOMED Acute myocardial infarction)
+    query = "Acute myocardial infarction, unspecified"
+    matches = norm.normalize(query, k=5)
+
+    assert len(matches) > 0
+
+    # Find the match for our non-standard concept
+    match = next((m for m in matches if m.match_concept.concept_id == 999999), None)
+    assert match is not None
+    assert match.is_standard is False  # standard_concept is NULL
+    assert match.mapped_standard_id == 312327
+
+
+def test_normalize_mapped_standard_error(loaded_components: Any) -> None:
+    """
+    Test that error handling works when fetching mapped standard concept.
+    """
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
+
+    # 1. We want to simulate an error ONLY when querying concept_relationship.
+    # The normalizer makes 2 types of queries:
+    # A. To 'concept' table (to hydrate).
+    # B. To 'concept_relationship' table (to map).
+
+    # We can wrap the duckdb connection to intercept execute.
+    # But it's easier to patch 'execute' on the connection object if it were a python object.
+    # DuckDBPyConnection is a C extension type.
+    # Instead, we can inject a mock connection that delegates to the real one, but fails on specific query.
+
+    real_execute = con.execute
+
+    def side_effect(query: str, params: list = None):
+        if "concept_relationship" in query:
+            raise RuntimeError("Database exploded")
+        return real_execute(query, params)
+
+    # We need to mock the connection object provided to CodexNormalizer
+    mock_conn = MagicMock(wraps=con)
+    mock_conn.execute.side_effect = side_effect
+
+    norm = CodexNormalizer(embedder, mock_conn, lancedb_con)
+
+    # Trigger the logic: search for non-standard concept
+    query = "Acute myocardial infarction, unspecified"
+    matches = norm.normalize(query, k=5)
+
+    # Should still return matches, but mapped_standard_id should be None (and log warning)
+    match = next((m for m in matches if m.match_concept.concept_id == 999999), None)
+    assert match is not None
+    assert match.is_standard is False
+    assert match.mapped_standard_id is None
