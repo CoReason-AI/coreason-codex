@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from typing import Any, List
+from typing import Any
 from unittest.mock import MagicMock
 
 import duckdb
@@ -52,11 +52,7 @@ def create_match(concept_id: int, is_standard: bool) -> CodexMatch:
         concept_code="CODE",
     )
     return CodexMatch(
-        input_text="test",
-        match_concept=c,
-        similarity_score=1.0,
-        is_standard=is_standard,
-        mapped_standard_id=None
+        input_text="test", match_concept=c, similarity_score=1.0, is_standard=is_standard, mapped_standard_id=None
     )
 
 
@@ -133,6 +129,6 @@ def test_mixed_batch_hydration(memory_db: duckdb.DuckDBPyConnection, mock_compon
 
     norm._hydrate_mapped_standard_ids(matches)
 
-    assert matches[0].mapped_standard_id is None # Standard, untouched
+    assert matches[0].mapped_standard_id is None  # Standard, untouched
     assert matches[1].mapped_standard_id == 200  # Mapped
-    assert matches[2].mapped_standard_id is None # Unmapped
+    assert matches[2].mapped_standard_id is None  # Unmapped
