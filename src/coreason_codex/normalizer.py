@@ -115,15 +115,7 @@ class CodexNormalizer:
             # Row order: id, name, domain, vocab, class, standard, code
             c_id = row[0]
 
-            concept = Concept(
-                concept_id=c_id,
-                concept_name=row[1],
-                domain_id=row[2],
-                vocabulary_id=row[3],
-                concept_class_id=row[4],
-                standard_concept=row[5],
-                concept_code=row[6],
-            )
+            concept = Concept.from_row(row)
 
             # Re-attach score
             score = concept_scores.get(c_id, 0.0)
