@@ -115,15 +115,7 @@ class CodexNormalizer:
             # Row order: id, name, domain, vocab, class, standard, code
             c_id = row[0]
 
-            concept = Concept(
-                concept_id=c_id,
-                concept_name=row[1],
-                domain_id=row[2],
-                vocabulary_id=row[3],
-                concept_class_id=row[4],
-                standard_concept=row[5],
-                concept_code=row[6],
-            )
+            concept = Concept.from_row(row)
 
             # Re-attach score
             score = concept_scores.get(c_id, 0.0)
@@ -150,7 +142,48 @@ class CodexNormalizer:
                 )
             )
 
+        # Enhance with mapped_standard_id for non-standard concepts
+        self._hydrate_mapped_standard_ids(matches)
+
         # Sort by score descending
         matches.sort(key=lambda x: x.similarity_score, reverse=True)
 
         return matches
+
+    def _hydrate_mapped_standard_ids(self, matches: List[CodexMatch]) -> None:
+        """
+        Populates mapped_standard_id for non-standard concepts by looking up 'Maps to' relationship.
+        """
+        non_std_indices = [i for i, m in enumerate(matches) if not m.is_standard]
+        if not non_std_indices:
+            return
+
+        non_std_ids = [matches[i].match_concept.concept_id for i in non_std_indices]
+
+        # Batch query for 'Maps to' relationships
+        # We want: source_id -> target_id (Standard)
+        # concept_relationship: concept_id_1 (source) -> concept_id_2 (target)
+        # relationship_id = 'Maps to'
+        query = f"""
+            SELECT
+                concept_id_1,
+                concept_id_2
+            FROM concept_relationship
+            WHERE concept_id_1 IN ({",".join(["?"] * len(non_std_ids))})
+              AND relationship_id = 'Maps to'
+              AND invalid_reason IS NULL
+        """
+
+        try:
+            cursor = self.duckdb_conn.execute(query, non_std_ids)
+            rows = cursor.fetchall()
+            mapping = {row[0]: row[1] for row in rows}
+
+            for i in non_std_indices:
+                source_id = matches[i].match_concept.concept_id
+                if source_id in mapping:
+                    matches[i].mapped_standard_id = mapping[source_id]
+
+        except Exception as e:
+            logger.warning(f"Failed to hydrate mapped standard IDs: {e}")
+            # We don't crash, just leave it as None

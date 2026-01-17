@@ -8,7 +8,7 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from typing import Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from pydantic import BaseModel
 
@@ -21,6 +21,22 @@ class Concept(BaseModel):
     concept_class_id: str
     standard_concept: Optional[str] = None
     concept_code: str
+
+    @classmethod
+    def from_row(cls, row: Tuple[Any, ...]) -> "Concept":
+        """
+        Creates a Concept instance from a DuckDB row tuple.
+        Assumes row order: id, name, domain, vocab, class, standard, code.
+        """
+        return cls(
+            concept_id=row[0],
+            concept_name=row[1],
+            domain_id=row[2],
+            vocabulary_id=row[3],
+            concept_class_id=row[4],
+            standard_concept=row[5],
+            concept_code=row[6],
+        )
 
 
 class CodexMatch(BaseModel):
