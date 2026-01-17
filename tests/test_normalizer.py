@@ -137,3 +137,46 @@ def test_normalize_synonym_score_preservation(loaded_components: Any) -> None:
     assert len(matches) == 1
     assert matches[0].match_concept.concept_id == 312327
     assert abs(matches[0].similarity_score - 0.9) < 0.0001
+
+
+def test_normalize_non_standard_mapping(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
+
+    # Search for "Acute myocardial infarction, unspecified" (Concept 999999)
+    # This is non-standard and maps to 312327.
+    query = "Acute myocardial infarction, unspecified"
+    matches = norm.normalize(query, k=5)
+
+    assert len(matches) > 0
+
+    # Find the specific match for 999999
+    match_999999 = next((m for m in matches if m.match_concept.concept_id == 999999), None)
+    assert match_999999 is not None
+    assert match_999999.is_standard is False
+    assert match_999999.mapped_standard_id == 312327
+
+def test_hydrate_mapped_standard_ids_exception(loaded_components: Any) -> None:
+    con, lancedb_con, embedder = loaded_components
+    norm = CodexNormalizer(embedder, con, lancedb_con)
+
+    # Create a mock match that is non-standard
+    mock_concept = MagicMock()
+    mock_concept.concept_id = 12345
+
+    mock_match = MagicMock()
+    mock_match.match_concept = mock_concept
+    mock_match.is_standard = False
+    mock_match.mapped_standard_id = None
+
+    matches = [mock_match]
+
+    # Force an exception during DuckDB execution by mocking the connection
+    norm.duckdb_conn = MagicMock()
+    norm.duckdb_conn.execute.side_effect = Exception("DB Error")
+
+    # Should not raise exception, but log warning
+    norm._hydrate_mapped_standard_ids(matches)
+
+    # Verify no mapping happened
+    assert mock_match.mapped_standard_id is None
