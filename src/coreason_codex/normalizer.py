@@ -131,14 +131,25 @@ class CodexNormalizer:
             # Determine match status
             is_std = concept.standard_concept == "S"
 
-            # If it's not standard, we might want to find the mapping, but that's the CrossWalker's job usually.
-            # However, CodexMatch has `mapped_standard_id`.
-            # For this iteration, we leave mapped_standard_id as None unless we do another lookup.
-            # The PRD says: "is_standard: False... mapped_standard_id: 1125315".
-            # This implies the Normalizer *should* try to find the standard mapping if possible.
-            # But the "One Step Rule" suggests keeping logic atomic.
-            # The "CrossWalker" is a separate component.
-            # I will leave mapped_standard_id as None for now to keep this unit focused on "Vector Search + Hydration".
+            mapped_std_id = None
+            if not is_std:
+                # Attempt to resolve "Maps to" standard concept
+                try:
+                    res = self.duckdb_conn.execute(
+                        """
+                        SELECT concept_id_2
+                        FROM concept_relationship
+                        WHERE concept_id_1 = ?
+                          AND relationship_id = 'Maps to'
+                          AND invalid_reason IS NULL
+                        LIMIT 1
+                        """,
+                        [c_id],
+                    ).fetchone()
+                    if res:
+                        mapped_std_id = res[0]
+                except Exception as e:
+                    logger.warning(f"Failed to resolve mapped standard for {c_id}: {e}")
 
             matches.append(
                 CodexMatch(
@@ -146,7 +157,7 @@ class CodexNormalizer:
                     match_concept=concept,
                     similarity_score=score,
                     is_standard=is_std,
-                    mapped_standard_id=None,
+                    mapped_standard_id=mapped_std_id,
                 )
             )
 
