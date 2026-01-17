@@ -75,7 +75,9 @@ def mock_components() -> Tuple[duckdb.DuckDBPyConnection, Any, Embedder]:
         # 300 -> 1001 (Valid)
         (300, 1001, "Maps to", "2020-01-01", "2099-12-31", None),
     ]
-    con.executemany("INSERT INTO concept_relationship VALUES (?, ?, ?, CAST(? AS DATE), CAST(? AS DATE), ?)", relationships)
+    con.executemany(
+        "INSERT INTO concept_relationship VALUES (?, ?, ?, CAST(? AS DATE), CAST(? AS DATE), ?)", relationships
+    )
 
     # 2. Mock LanceDB
     mock_table = MagicMock()
@@ -89,7 +91,9 @@ def mock_components() -> Tuple[duckdb.DuckDBPyConnection, Any, Embedder]:
     return con, mock_lancedb, mock_embedder
 
 
-def setup_normalizer_with_result(components, concept_id: int):
+def setup_normalizer_with_result(
+    components: Tuple[duckdb.DuckDBPyConnection, Any, Embedder], concept_id: int
+) -> CodexNormalizer:
     con, lancedb, embedder = components
 
     # Configure LanceDB to return the specific concept
@@ -110,7 +114,7 @@ def setup_normalizer_with_result(components, concept_id: int):
     return norm
 
 
-def test_mapping_no_relationship(mock_components):
+def test_mapping_no_relationship(mock_components: Tuple[duckdb.DuckDBPyConnection, Any, Embedder]) -> None:
     """
     Test a non-standard concept that has NO entry in concept_relationship table.
     """
@@ -126,7 +130,7 @@ def test_mapping_no_relationship(mock_components):
     assert m.mapped_standard_id is None
 
 
-def test_mapping_invalid_relationship(mock_components):
+def test_mapping_invalid_relationship(mock_components: Tuple[duckdb.DuckDBPyConnection, Any, Embedder]) -> None:
     """
     Test a non-standard concept that has a 'Maps to' entry, but it is invalid (invalid_reason='D').
     """
@@ -142,7 +146,7 @@ def test_mapping_invalid_relationship(mock_components):
     assert m.mapped_standard_id is None
 
 
-def test_mapping_multiple_relationships(mock_components):
+def test_mapping_multiple_relationships(mock_components: Tuple[duckdb.DuckDBPyConnection, Any, Embedder]) -> None:
     """
     Test a non-standard concept that maps to MULTIPLE standard concepts.
     The normalizer should pick one (via LIMIT 1) and not crash.
