@@ -4,8 +4,8 @@
 
 `coreason-codex` acts as the "Universal Translator" for the platform. It bridges the "Semantic Precision Gap" in Bio-Pharma AI by enforcing the use of **Standardized Vocabularies** (OMOP CDM).
 
-[![CI/CD](https://github.com/CoReason-AI/coreason_codex/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/CoReason-AI/coreason_codex/actions/workflows/ci-cd.yml)
-[![codecov](https://codecov.io/gh/CoReason-AI/coreason_codex/branch/main/graph/badge.svg)](https://codecov.io/gh/CoReason-AI/coreason_codex)
+[![CI/CD](https://github.com/CoReason-AI/coreason-codex/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/CoReason-AI/coreason-codex/actions/workflows/ci-cd.yml)
+[![codecov](https://codecov.io/gh/CoReason-AI/coreason-codex/branch/main/graph/badge.svg)](https://codecov.io/gh/CoReason-AI/coreason-codex)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://python.org)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
@@ -32,8 +32,8 @@ For detailed requirements, see the [Product Requirements Document](PRD.md).
 
 1.  Clone the repository:
     ```sh
-    git clone https://github.com/CoReason-AI/coreason_codex.git
-    cd coreason_codex
+    git clone https://github.com/CoReason-AI/coreason-codex.git
+    cd coreason-codex
     ```
 2.  Install dependencies:
     ```sh
