@@ -8,32 +8,42 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-import argparse
 import sys
 from pathlib import Path
+from typing import Annotated
 
+import typer
 from loguru import logger
 
+from coreason_codex import __version__
 from coreason_codex.build import CodexBuilder
 from coreason_codex.embedders import SapBertEmbedder
 
+app = typer.Typer(
+    name="coreason-codex",
+    help="CLI for coreason-codex: The Universal Terminology Server.",
+    add_completion=False,
+)
 
-def build(args: argparse.Namespace) -> None:
-    """Executes the build command."""
-    source_dir = Path(args.source)
-    output_dir = Path(args.output)
-    device = args.device
 
-    logger.info(f"Starting Codex Build from {source_dir} to {output_dir}")
+@app.command()  # type: ignore
+def build(
+    source: Annotated[Path, typer.Option("--source", "-s", help="Path to source CSV directory", exists=True)],
+    output: Annotated[Path, typer.Option("--output", "-o", help="Path to output directory")],
+    device: Annotated[str, typer.Option("--device", "-d", help="Device for embedding (cpu/cuda)")] = "cpu",
+) -> None:
+    """
+    Build Codex artifacts from raw Athena CSVs.
+    """
+    logger.info(f"Starting Codex Build from {source} to {output}")
 
     try:
-        builder = CodexBuilder(source_dir, output_dir)
+        builder = CodexBuilder(source, output)
 
         # 1. Build Vocab
         builder.build_vocab()
 
         # 2. Build Vectors
-        # Initialize embedder
         logger.info(f"Initializing embedder on {device}...")
         embedder = SapBertEmbedder(device=device)
         builder.build_vectors(embedder)
@@ -45,23 +55,19 @@ def build(args: argparse.Namespace) -> None:
 
     except Exception:
         logger.exception("Codex Build Failed")
+        # Typer handles exit codes gracefully, but we want explicit non-zero on failure
         sys.exit(1)
+
+
+@app.command()  # type: ignore
+def version() -> None:
+    """Print the version of coreason-codex."""
+    typer.echo(f"coreason-codex v{__version__}")
 
 
 def main() -> None:
     """Entry point for the CLI."""
-    parser = argparse.ArgumentParser(description="coreason-codex CLI")
-    subparsers = parser.add_subparsers(dest="command", required=True, help="Command to execute")
-
-    # Build Command
-    build_parser = subparsers.add_parser("build", help="Build Codex artifacts from raw CSVs")
-    build_parser.add_argument("--source", "-s", required=True, help="Path to source CSV directory")
-    build_parser.add_argument("--output", "-o", required=True, help="Path to output directory")
-    build_parser.add_argument("--device", "-d", default="cpu", help="Device for embedding (cpu/cuda)")
-    build_parser.set_defaults(func=build)
-
-    args = parser.parse_args()
-    args.func(args)
+    app()
 
 
 if __name__ == "__main__":
