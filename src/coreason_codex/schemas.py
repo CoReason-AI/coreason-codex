@@ -8,19 +8,46 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
-from typing import Dict
+from typing import Any, Dict, Optional, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+
+
+class Concept(BaseModel):
+    concept_id: int
+    concept_name: str
+    domain_id: str
+    vocabulary_id: str
+    concept_class_id: str
+    standard_concept: Optional[str] = None
+    concept_code: str
+
+    @classmethod
+    def from_row(cls, row: Tuple[Any, ...]) -> "Concept":
+        """
+        Creates a Concept instance from a DuckDB row tuple.
+        Assumes row order: id, name, domain, vocab, class, standard, code.
+        """
+        return cls(
+            concept_id=row[0],
+            concept_name=row[1],
+            domain_id=row[2],
+            vocabulary_id=row[3],
+            concept_class_id=row[4],
+            standard_concept=row[5],
+            concept_code=row[6],
+        )
+
+
+class CodexMatch(BaseModel):
+    input_text: str
+    match_concept: Concept
+    similarity_score: float
+    is_standard: bool
+    mapped_standard_id: Optional[int] = None
 
 
 class Manifest(BaseModel):
-    """
-    Manifest for a Codex Pack.
-
-    Contains metadata and integrity information (checksums) for the
-    vocabulary and vector artifacts.
-    """
-
-    version: str = Field(..., description="Version of the Codex Pack (e.g., v2025_Q1)")
-    source_date: str = Field(..., description="Date of the source data (e.g., 2025-01-01)")
-    checksums: Dict[str, str] = Field(..., description="Map of filename to SHA-256 hash")
+    version: str
+    source_date: str
+    checksums: Dict[str, str]
