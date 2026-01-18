@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "coreason_codex"
-version = "0.1.0"
+version = "0.2.0"
 description = "coreason-codex"
 authors = ["Gowtham A Rao <gowtham.rao@coreason.ai>"]
 license = "Prosperity-3.0"
@@ -19,6 +19,7 @@ numpy = "^2.4.1"
 duckdb = "^1.4.3"
 sentence-transformers = "^5.2.0"
 typer = "^0.21.1"
+jaraco-context = "^6.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
@@ -35,7 +36,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "coreason_codex"
-version = "0.1.0"
+version = "0.2.0"
 description = "coreason-codex"
 readme = "README.md"
 requires-python = ">=3.11"
