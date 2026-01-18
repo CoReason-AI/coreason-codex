@@ -7,6 +7,9 @@ license = "Prosperity-3.0"
 readme = "README.md"
 packages = [{include = "coreason_codex", from = "src"}]
 
+[tool.poetry.scripts]
+codex = "coreason_codex.main:main"
+
 [tool.poetry.dependencies]
 python = ">=3.12, <3.15"
 loguru = "^0.7.2"
@@ -15,6 +18,7 @@ lancedb = "^0.26.1"
 numpy = "^2.4.1"
 duckdb = "^1.4.3"
 sentence-transformers = "^5.2.0"
+typer = "^0.21.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
