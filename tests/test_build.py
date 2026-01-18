@@ -47,7 +47,9 @@ def test_builder_full_workflow(source_csvs: Path, tmp_path: Path, mock_embedder:
     assert con is not None
 
     # Verify Data
-    count = con.execute("SELECT COUNT(*) FROM concept").fetchone()[0]
+    result = con.execute("SELECT COUNT(*) FROM concept").fetchone()
+    assert result is not None
+    count = result[0]
     assert count == 2
 
 
