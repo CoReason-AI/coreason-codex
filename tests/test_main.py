@@ -10,7 +10,7 @@
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -50,7 +50,7 @@ def test_main_build_with_device(tmp_path: Path) -> None:
     test_args = ["coreason-codex", "build", "--source", str(source), "--output", str(output), "--device", "cuda"]
 
     with patch.object(sys, "argv", test_args):
-        with patch("coreason_codex.main.CodexBuilder") as MockBuilder:
+        with patch("coreason_codex.main.CodexBuilder"):
             with patch("coreason_codex.main.SapBertEmbedder") as MockEmbedder:
                 main()
                 MockEmbedder.assert_called_once_with(device="cuda")

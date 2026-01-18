@@ -43,7 +43,7 @@ def build(args: argparse.Namespace) -> None:
 
         logger.info("Codex Build Completed Successfully.")
 
-    except Exception as e:
+    except Exception:
         logger.exception("Codex Build Failed")
         sys.exit(1)
 
