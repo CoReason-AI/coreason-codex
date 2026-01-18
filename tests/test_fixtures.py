@@ -40,7 +40,9 @@ def test_codex_loader_connections(synthetic_codex_pack: Path) -> None:
     con, lancedb_con = loader.load_codex()
 
     # 1. Test DuckDB
-    count = con.execute("SELECT COUNT(*) FROM concept").fetchone()[0]
+    result = con.execute("SELECT COUNT(*) FROM concept").fetchone()
+    assert result is not None
+    count = result[0]
     assert count >= 5
 
     # 2. Test LanceDB

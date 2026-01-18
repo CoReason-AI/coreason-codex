@@ -20,5 +20,22 @@ from .crosswalker import CodexCrossWalker
 from .hierarchy import CodexHierarchy
 from .loader import CodexLoader
 from .normalizer import CodexNormalizer
+from .pipeline import (
+    codex_check_relationship,
+    codex_get_descendants,
+    codex_normalize,
+    codex_translate_code,
+    initialize,
+)
 
-__all__ = ["CodexLoader", "CodexNormalizer", "CodexHierarchy", "CodexCrossWalker"]
+__all__ = [
+    "CodexLoader",
+    "CodexNormalizer",
+    "CodexHierarchy",
+    "CodexCrossWalker",
+    "initialize",
+    "codex_normalize",
+    "codex_get_descendants",
+    "codex_translate_code",
+    "codex_check_relationship",
+]
