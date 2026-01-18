@@ -6,13 +6,13 @@
 # For details, see the LICENSE file.
 # Commercial use beyond a 30-day trial requires a separate license.
 #
-# Source Code: https://github.com/CoReason-AI/coreason_codex
+# Source Code: https://github.com/CoReason-AI/coreason-codex
 
 """
 coreason-codex
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Gowtham A Rao"
 __email__ = "gowtham.rao@coreason.ai"
 

@@ -51,9 +51,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/CoReason-AI/coreason_codex"
-Repository = "https://github.com/CoReason-AI/coreason_codex"
-Documentation = "https://github.com/CoReason-AI/coreason_codex"
+Homepage = "https://github.com/CoReason-AI/coreason-codex"
+Repository = "https://github.com/CoReason-AI/coreason-codex"
+Documentation = "https://github.com/CoReason-AI/coreason-codex"
 
 [tool.ruff]
 line-length = 120
