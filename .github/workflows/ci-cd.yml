@@ -105,4 +105,3 @@ jobs:
       - name: Build documentation
         run: poetry run mkdocs build --strict
         shell: bash
-
