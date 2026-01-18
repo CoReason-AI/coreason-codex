@@ -14,6 +14,7 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from coreason_codex.main import app, main
+from coreason_codex.schemas import CodexMatch, Concept
 
 runner = CliRunner()
 
@@ -68,6 +69,43 @@ def test_main_build_failure(tmp_path: Path) -> None:
             result = runner.invoke(app, ["build", "--source", str(source), "--output", str(output)])
 
             assert result.exit_code == 1
+
+
+def test_main_normalize_success(tmp_path: Path) -> None:
+    pack = tmp_path / "pack"
+    pack.mkdir()
+
+    match = CodexMatch(
+        input_text="test",
+        match_concept=Concept(
+            concept_id=1, concept_name="C", domain_id="D", vocabulary_id="V", concept_class_id="C", concept_code="1"
+        ),
+        similarity_score=1.0,
+        is_standard=True,
+    )
+
+    with patch("coreason_codex.main.initialize") as mock_init:
+        with patch("coreason_codex.main.codex_normalize") as mock_norm:
+            mock_norm.return_value = [match]
+
+            result = runner.invoke(app, ["normalize", "test input", "--pack", str(pack)])
+
+            assert result.exit_code == 0
+            mock_init.assert_called_once_with(str(pack))
+            mock_norm.assert_called_once_with("test input", domain_filter=None)
+            assert '"concept_id": 1' in result.output
+
+
+def test_main_normalize_failure(tmp_path: Path) -> None:
+    pack = tmp_path / "pack"
+    pack.mkdir()
+
+    with patch("coreason_codex.main.initialize") as mock_init:
+        mock_init.side_effect = RuntimeError("Init failed")
+
+        result = runner.invoke(app, ["normalize", "test", "--pack", str(pack)])
+
+        assert result.exit_code == 1
 
 
 def test_version_command() -> None:

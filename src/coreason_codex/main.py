@@ -10,7 +10,7 @@
 
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Optional
 
 import typer
 from loguru import logger
@@ -18,6 +18,7 @@ from loguru import logger
 from coreason_codex import __version__
 from coreason_codex.build import CodexBuilder
 from coreason_codex.embedders import SapBertEmbedder
+from coreason_codex.pipeline import codex_normalize, initialize
 
 app = typer.Typer(
     name="coreason-codex",
@@ -56,6 +57,25 @@ def build(
     except Exception:
         logger.exception("Codex Build Failed")
         # Typer handles exit codes gracefully, but we want explicit non-zero on failure
+        sys.exit(1)
+
+
+@app.command()  # type: ignore
+def normalize(
+    text: Annotated[str, typer.Argument(help="Input text to normalize")],
+    pack: Annotated[Path, typer.Option("--pack", "-p", help="Path to Codex Pack directory", exists=True)],
+    domain: Annotated[Optional[str], typer.Option("--domain", "-d", help="Optional domain filter")] = None,
+) -> None:
+    """
+    Normalize text to Standard Concepts.
+    """
+    try:
+        initialize(str(pack))
+        results = codex_normalize(text, domain_filter=domain)
+        for match in results:
+            typer.echo(match.model_dump_json(indent=2))
+    except Exception:
+        logger.exception("Normalization Failed")
         sys.exit(1)
 
 
