@@ -19,6 +19,7 @@ numpy = "^2.4.1"
 duckdb = "^1.4.3"
 sentence-transformers = "^5.2.0"
 typer = "^0.21.1"
+jaraco-context = "^6.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
