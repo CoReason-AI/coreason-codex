@@ -27,7 +27,7 @@ app = typer.Typer(
 )
 
 
-@app.command()  # type: ignore
+@app.command()
 def build(
     source: Annotated[Path, typer.Option("--source", "-s", help="Path to source CSV directory", exists=True)],
     output: Annotated[Path, typer.Option("--output", "-o", help="Path to output directory")],
@@ -60,7 +60,7 @@ def build(
         sys.exit(1)
 
 
-@app.command()  # type: ignore
+@app.command()
 def normalize(
     text: Annotated[str, typer.Argument(help="Input text to normalize")],
     pack: Annotated[Path, typer.Option("--pack", "-p", help="Path to Codex Pack directory", exists=True)],
@@ -79,7 +79,7 @@ def normalize(
         sys.exit(1)
 
 
-@app.command()  # type: ignore
+@app.command()
 def version() -> None:
     """Print the version of coreason-codex."""
     typer.echo(f"coreason-codex v{__version__}")
