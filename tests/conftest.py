@@ -243,4 +243,10 @@ def source_csvs(tmp_path: Path) -> Path:
         )
         writer.writerow([312327, 312327, "Maps to", "1970-01-01", "2099-12-31", ""])
 
+    # Create CONCEPT_SYNONYM.csv
+    with open(src / "CONCEPT_SYNONYM.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["concept_id", "concept_synonym_name", "language_concept_id"])
+        writer.writerow([312327, "Heart Attack", 4180186])  # 4180186 = English
+
     return src
