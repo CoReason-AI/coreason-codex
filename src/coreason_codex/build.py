@@ -26,7 +26,7 @@ class CodexBuilder:
     Offline Builder utility to compile raw Athena CSVs into DuckDB artifacts.
     """
 
-    REQUIRED_FILES = ["CONCEPT.csv", "CONCEPT_RELATIONSHIP.csv", "CONCEPT_ANCESTOR.csv"]
+    REQUIRED_FILES = ["CONCEPT.csv", "CONCEPT_RELATIONSHIP.csv", "CONCEPT_ANCESTOR.csv", "CONCEPT_SYNONYM.csv"]
 
     def __init__(self, source_dir: Union[str, Path], output_dir: Union[str, Path]):
         """
@@ -81,6 +81,9 @@ class CodexBuilder:
             # Load CONCEPT_ANCESTOR table
             self._load_table(con, "CONCEPT_ANCESTOR")
 
+            # Load CONCEPT_SYNONYM table
+            self._load_table(con, "CONCEPT_SYNONYM")
+
             # Create Indexes
             self._create_indexes(con)
 
@@ -127,6 +130,9 @@ class CodexBuilder:
         # We might also want concept_id_2 for reverse lookups if needed, but PRD emphasizes forward mapping.
         # Adding it helps with complete graph traversal.
         con.execute("CREATE INDEX idx_cr_concept_2 ON CONCEPT_RELATIONSHIP(concept_id_2)")
+
+        # CONCEPT_SYNONYM: Synonym lookups
+        con.execute("CREATE INDEX idx_synonym_concept_id ON CONCEPT_SYNONYM(concept_id)")
 
         logger.info("Indexes created.")
 
