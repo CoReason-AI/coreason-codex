@@ -17,7 +17,7 @@ repos:
     rev: v1.13.0
     hooks:
       - id: mypy
-        additional_dependencies: [pydantic, lancedb, numpy, pytest, sentence-transformers, typer]
+        additional_dependencies: [pydantic, lancedb, numpy, pytest, sentence-transformers, typer, fastapi, uvicorn]
   - repo: https://github.com/AleksaC/hadolint-py
     rev: v2.14.0
     hooks:
