@@ -76,8 +76,8 @@ def test_internal_server_error(mock_codex_context: Tuple[MagicMock, MagicMock]) 
     with TestClient(app) as client:
         # FastAPI handles exceptions by returning 500 if not handled
         with pytest.raises(ValueError):
-             # TestClient raises the exception directly in the test process for unhandled app exceptions
-             client.post("/normalize", json={"text": "crash me"})
+            # TestClient raises the exception directly in the test process for unhandled app exceptions
+            client.post("/normalize", json={"text": "crash me"})
 
 
 def test_env_var_configuration(mock_codex_context: Tuple[MagicMock, MagicMock]) -> None:
