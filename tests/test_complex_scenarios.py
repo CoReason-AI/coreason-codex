@@ -109,13 +109,18 @@ def test_unicode_handling(tmp_path: Path) -> None:
         writer.writerow([101, "β-blocker", "Drug", "RxNorm", "Ingredient", "S", "CODE_101", ""])
 
     # Required files
-    for fname in ["CONCEPT_ANCESTOR.csv", "CONCEPT_RELATIONSHIP.csv"]:
-        with open(source_dir / fname, "w", newline="") as f:
-            # write headers only
+    for fname in ["CONCEPT_ANCESTOR.csv", "CONCEPT_RELATIONSHIP.csv", "CONCEPT_SYNONYM.csv"]:
+        with open(source_dir / fname, "w", newline="", encoding="utf-8") as f:
+            # write headers only or minimal data
             if fname == "CONCEPT_ANCESTOR.csv":
                 f.write("ancestor_concept_id,descendant_concept_id,min_levels_of_separation,max_levels_of_separation\n")
-            else:
+            elif fname == "CONCEPT_RELATIONSHIP.csv":
                 f.write("concept_id_1,concept_id_2,relationship_id,valid_start_date,valid_end_date,invalid_reason\n")
+            elif fname == "CONCEPT_SYNONYM.csv":
+                writer = csv.writer(f)
+                writer.writerow(["concept_id", "concept_synonym_name", "language_concept_id"])
+                # Add a unicode synonym to test that too
+                writer.writerow([100, "Ménière's", 4180186])
 
     # Build
     output_dir = tmp_path / "unicode_out"
