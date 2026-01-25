@@ -72,6 +72,7 @@ for match in matches:
 
 Detailed documentation is available in the `docs/` directory:
 
+- [Setup & Deployment](docs/setup_deployment.md): Step-by-step guide to installing, building, and running the service.
 - [Architecture](docs/architecture.md): Overview of the system design, including the Frozen Lake pattern and Zero-Copy architecture.
 - [Usage Guide](docs/usage.md): Detailed instructions on using the Loader, Normalizer, Hierarchy, and CrossWalker components.
 - [Vignettes](docs/vignette.md): Walkthroughs of key user stories (Semantic Tagging, Lateral Logic, Audit Replay).
