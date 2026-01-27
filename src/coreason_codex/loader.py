@@ -11,6 +11,9 @@
 import hashlib
 import json
 import os
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Tuple, Union
 
@@ -19,6 +22,68 @@ import lancedb
 from loguru import logger
 
 from coreason_codex.schemas import Manifest
+from coreason_identity.models import UserContext
+
+
+class AccessDeniedError(Exception):
+    pass
+
+
+def load_repository(url: str, user_context: UserContext) -> Path:
+    """
+    Securely clones a repository using the user's downstream token.
+    """
+    if not url.startswith("https://"):
+        raise AccessDeniedError("Only HTTPS URLs are supported for secure cloning.")
+
+    token_obj = user_context.downstream_token
+    if not token_obj:
+        raise AccessDeniedError("No downstream token provided in UserContext.")
+
+    # Handle SecretStr
+    if hasattr(token_obj, "get_secret_value"):
+        token = token_obj.get_secret_value()
+    else:
+        token = str(token_obj)  # pragma: no cover
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="codex_repo_"))
+
+    logger.info(f"Cloning {url} for user {user_context.user_id}")
+
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+
+    # git clone -c http.extraHeader="Authorization: Bearer <token>" <url> <target>
+    cmd = [
+        "git",
+        "clone",
+        "-c",
+        f"http.extraHeader=Authorization: Bearer {token}",
+        url,
+        str(temp_dir),
+    ]
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            env=env,
+        )
+
+        if proc.returncode != 0:
+            stderr = proc.stderr.decode()
+            # Mask token in logs if it appears (git might print the URL)
+            safe_stderr = stderr.replace(token, "***")
+            logger.error(f"Clone failed: {safe_stderr}")
+            if "Authentication failed" in stderr or "403" in stderr:
+                raise AccessDeniedError("Access denied to repository.")
+            raise RuntimeError("Failed to clone repository.")
+
+    except Exception:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
+
+    return temp_dir
 
 
 class CodexLoader:

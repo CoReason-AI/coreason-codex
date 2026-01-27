@@ -19,6 +19,8 @@ from pydantic import BaseModel
 from coreason_codex.normalizer import CodexNormalizer
 from coreason_codex.pipeline import CodexContext
 from coreason_codex.schemas import CodexMatch
+from coreason_identity.models import UserContext
+from coreason_codex.main import Codex
 
 
 # Pydantic Models for Requests
@@ -30,6 +32,12 @@ class NormalizationRequest(BaseModel):
 class SearchRequest(BaseModel):
     query: str
     limit: int = 10
+    user_context: UserContext
+
+
+class IngestRequest(BaseModel):
+    url: str
+    user_context: UserContext
 
 
 # Lifespan Management
@@ -75,10 +83,25 @@ async def normalize(request: NormalizationRequest) -> List[CodexMatch]:
     return normalizer.normalize(request.text, domain_filter=request.domain)
 
 
-@app.post("/search", response_model=List[CodexMatch])
-async def search(request: SearchRequest) -> List[CodexMatch]:
+@app.post("/search")
+async def search(request: SearchRequest):
     """
     Expose vector search to find nearest concepts.
     """
-    normalizer = cast(CodexNormalizer, app.state.normalizer)
-    return normalizer.normalize(request.query, k=request.limit)
+    return Codex.query(request.query, request.user_context, limit=request.limit)
+
+
+@app.post("/ingest")
+async def ingest(request: IngestRequest):
+    """
+    Ingest a repository.
+    """
+    return Codex.index_repository(request.url, request.user_context)
+
+
+@app.get("/context")
+async def context():
+    """
+    Context endpoint.
+    """
+    return {"status": "ok"}
