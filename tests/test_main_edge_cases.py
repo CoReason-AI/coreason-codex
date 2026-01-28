@@ -58,55 +58,37 @@ def test_cli_embedder_initialization_error(tmp_path: Path) -> None:
     output = tmp_path / "output"
     source.mkdir()
 
-    with patch("coreason_codex.main.CodexBuilder") as MockBuilder:
-        with patch("coreason_codex.main.SapBertEmbedder") as MockEmbedder:
-            # Mock Embedder to raise an exception on init
-            MockEmbedder.side_effect = RuntimeError("Model download failed")
+    with patch("coreason_codex.main.CodexPipeline") as MockPipeline:
+        # Simulate failure in pipeline run
+        instance = MockPipeline.return_value
+        instance.run.side_effect = RuntimeError("Model download failed")
 
-            mock_builder = MockBuilder.return_value
+        result = runner.invoke(app, ["build", "--source", str(source), "--output", str(output)])
 
-            result = runner.invoke(app, ["build", "--source", str(source), "--output", str(output)])
-
-            assert result.exit_code == 1
-
-            mock_builder.build_vocab.assert_called_once()
-            mock_builder.build_vectors.assert_not_called()
+        assert result.exit_code == 1
 
 
 def test_cli_relative_paths(tmp_path: Path) -> None:
     """
     Test that Typer correctly handles relative paths.
     """
-    # Since Typer validates existence for source, we must ensure the relative path exists
-    # relative to CWD. Since we can't easily change CWD safely in tests running parallel,
-    # we will rely on mocking or just ensure we pass paths that exist if checked.
-    # However, 'exists=True' checks relative to CWD.
-    # Let's mock Path.exists/is_dir or just create a dummy file in the current directory?
-    # Better: Use fs (pyfakefs) or just skip strict existence check in test by using absolute paths
-    # OR rely on the fact we are testing logic.
-
-    # Actually, let's just create a dummy dir in CWD for the test? No, messy.
-    # Let's mock the Typer validation? No, integration test.
-
-    # We will use absolute paths for source (to satisfy validation) but we want to test relative path handling logic?
-    # Typer converts inputs to Path objects automatically.
-
     # Let's create a temp dir and pass it as absolute, verifying correct type conversion.
     source = tmp_path / "source"
     source.mkdir()
     output = tmp_path / "output"  # doesn't need to exist
 
-    with patch("coreason_codex.main.CodexBuilder") as MockBuilder:
-        with patch("coreason_codex.main.SapBertEmbedder"):
-            result = runner.invoke(app, ["build", "--source", str(source), "--output", str(output)])
+    with patch("coreason_codex.main.CodexPipeline") as MockPipeline:
+        result = runner.invoke(app, ["build", "--source", str(source), "--output", str(output)])
 
-            assert result.exit_code == 0
+        assert result.exit_code == 0
 
-            args, _ = MockBuilder.call_args
-            source_arg, output_arg = args
+        instance = MockPipeline.return_value
+        args, _ = instance.run.call_args
+        source_arg = args[0]
+        output_arg = args[1]
 
-            assert isinstance(source_arg, Path)
-            assert isinstance(output_arg, Path)
+        assert isinstance(source_arg, Path)
+        assert isinstance(output_arg, Path)
 
 
 def test_cli_unknown_command() -> None:

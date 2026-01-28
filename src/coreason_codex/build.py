@@ -16,6 +16,7 @@ from typing import Any, Dict, Iterator, List, Union
 
 import duckdb
 import lancedb
+from coreason_identity.models import UserContext
 from loguru import logger
 
 from coreason_codex.interfaces import Embedder
@@ -48,6 +49,34 @@ class CodexBuilder:
             file_path = self.source_dir / filename
             if not file_path.exists():
                 raise FileNotFoundError(f"Required file not found: {filename}")
+
+    def build_graph(self, context: UserContext, device: str = "cpu") -> None:
+        """
+        Builds the entire Codex Graph (Vocab + Vectors) and generates manifest.
+        Requires UserContext for audit logging.
+        """
+        if context is None:
+            raise ValueError("UserContext is required for build_graph")
+
+        logger.info(
+            "Building knowledge graph",
+            user_id=context.user_id,
+            path=str(self.source_dir),
+        )
+
+        # 1. Build Vocab
+        self.build_vocab()
+
+        # 2. Build Vectors
+        # We assume SapBertEmbedder is the standard for now.
+        from coreason_codex.embedders import SapBertEmbedder
+
+        logger.info(f"Initializing embedder on {device}...")
+        embedder = SapBertEmbedder(device=device)
+        self.build_vectors(embedder)
+
+        # 3. Generate Manifest
+        self.generate_manifest()
 
     def build_vocab(self) -> Path:
         """

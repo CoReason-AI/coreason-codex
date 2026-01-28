@@ -24,23 +24,20 @@ def test_main_build_success(tmp_path: Path) -> None:
     output = tmp_path / "output"
     source.mkdir()
 
-    with patch("coreason_codex.main.CodexBuilder") as MockBuilder:
-        with patch("coreason_codex.main.SapBertEmbedder") as MockEmbedder:
-            mock_builder_instance = MockBuilder.return_value
-            mock_embedder_instance = MockEmbedder.return_value
+    with patch("coreason_codex.main.CodexPipeline") as MockPipeline:
+        mock_pipeline_instance = MockPipeline.return_value
 
-            result = runner.invoke(app, ["build", "--source", str(source), "--output", str(output)])
+        result = runner.invoke(app, ["build", "--source", str(source), "--output", str(output)])
 
-            assert result.exit_code == 0
+        assert result.exit_code == 0
 
-            # Verify Builder was initialized and methods called
-            MockBuilder.assert_called_once_with(source, output)
-            mock_builder_instance.build_vocab.assert_called_once()
-            mock_builder_instance.build_vectors.assert_called_once_with(mock_embedder_instance)
-            mock_builder_instance.generate_manifest.assert_called_once()
-
-            # Verify Embedder was initialized
-            MockEmbedder.assert_called_once_with(device="cpu")
+        # Verify Pipeline was initialized and methods called
+        MockPipeline.assert_called_once()
+        mock_pipeline_instance.run.assert_called_once()
+        args, _ = mock_pipeline_instance.run.call_args
+        assert args[0] == source
+        assert args[1] == output
+        assert args[2] == "cpu"
 
 
 def test_main_build_with_device(tmp_path: Path) -> None:
@@ -48,11 +45,13 @@ def test_main_build_with_device(tmp_path: Path) -> None:
     output = tmp_path / "output"
     source.mkdir()
 
-    with patch("coreason_codex.main.CodexBuilder"):
-        with patch("coreason_codex.main.SapBertEmbedder") as MockEmbedder:
-            result = runner.invoke(app, ["build", "--source", str(source), "--output", str(output), "--device", "cuda"])
-            assert result.exit_code == 0
-            MockEmbedder.assert_called_once_with(device="cuda")
+    with patch("coreason_codex.main.CodexPipeline") as MockPipeline:
+        mock_pipeline_instance = MockPipeline.return_value
+        result = runner.invoke(app, ["build", "--source", str(source), "--output", str(output), "--device", "cuda"])
+        assert result.exit_code == 0
+        mock_pipeline_instance.run.assert_called_once()
+        args, _ = mock_pipeline_instance.run.call_args
+        assert args[2] == "cuda"
 
 
 def test_main_build_failure(tmp_path: Path) -> None:
@@ -60,15 +59,14 @@ def test_main_build_failure(tmp_path: Path) -> None:
     output = tmp_path / "output"
     source.mkdir()
 
-    with patch("coreason_codex.main.CodexBuilder") as MockBuilder:
-        with patch("coreason_codex.main.SapBertEmbedder"):
-            mock_builder_instance = MockBuilder.return_value
-            # Simulate failure
-            mock_builder_instance.build_vocab.side_effect = RuntimeError("Build failed")
+    with patch("coreason_codex.main.CodexPipeline") as MockPipeline:
+        mock_pipeline_instance = MockPipeline.return_value
+        # Simulate failure
+        mock_pipeline_instance.run.side_effect = RuntimeError("Build failed")
 
-            result = runner.invoke(app, ["build", "--source", str(source), "--output", str(output)])
+        result = runner.invoke(app, ["build", "--source", str(source), "--output", str(output)])
 
-            assert result.exit_code == 1
+        assert result.exit_code == 1
 
 
 def test_main_normalize_success(tmp_path: Path) -> None:
@@ -85,14 +83,19 @@ def test_main_normalize_success(tmp_path: Path) -> None:
     )
 
     with patch("coreason_codex.main.initialize") as mock_init:
-        with patch("coreason_codex.main.codex_normalize") as mock_norm:
-            mock_norm.return_value = [match]
+        with patch("coreason_codex.main.CodexPipeline") as MockPipeline:
+            mock_pipeline_instance = MockPipeline.return_value
+            mock_pipeline_instance.search.return_value = [match]
 
             result = runner.invoke(app, ["normalize", "test input", "--pack", str(pack)])
 
             assert result.exit_code == 0
             mock_init.assert_called_once_with(str(pack))
-            mock_norm.assert_called_once_with("test input", domain_filter=None)
+            # Verify search called (we can't easily check context without custom matcher)
+            mock_pipeline_instance.search.assert_called_once()
+            args, kwargs = mock_pipeline_instance.search.call_args
+            assert args[0] == "test input"
+            assert kwargs["domain_filter"] is None
             assert '"concept_id": 1' in result.output
 
 
