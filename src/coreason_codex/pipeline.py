@@ -8,16 +8,54 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
+from pathlib import Path
 from typing import List, Optional
 
+from coreason_identity.models import UserContext
 from loguru import logger
 
+from coreason_codex.build import CodexBuilder
 from coreason_codex.crosswalker import CodexCrossWalker
 from coreason_codex.embedders import SapBertEmbedder
 from coreason_codex.hierarchy import CodexHierarchy
 from coreason_codex.loader import CodexLoader
 from coreason_codex.normalizer import CodexNormalizer
 from coreason_codex.schemas import CodexMatch, Concept
+
+
+class CodexPipeline:
+    """
+    The main entry point for identity-aware Codex operations.
+    Wraps CodexBuilder and CodexContext.
+    """
+
+    def run(self, source: Path, output: Path, device: str = "cpu", *, context: UserContext) -> None:
+        """
+        Executes the build process.
+        """
+        if context is None:
+            raise ValueError("UserContext is required for pipeline run")
+
+        # Logging is handled in CodexBuilder.build_graph but we can log entry here too if needed.
+        # The prompt specified logging in "CodexPipeline.run (for building)" or implies the build operation.
+        # CodexBuilder.build_graph handles the specific log format requested.
+
+        builder = CodexBuilder(source, output)
+        builder.build_graph(context=context, device=device)
+
+    def search(
+        self, query: str, k: int = 10, domain_filter: Optional[str] = None, *, context: UserContext
+    ) -> List[CodexMatch]:
+        """
+        Executes graph search (normalization).
+        """
+        if context is None:
+            raise ValueError("UserContext is required for pipeline search")
+
+        logger.info("Executing graph search", user_id=context.user_id.get_secret_value(), k=k)
+
+        ctx = CodexContext.get_instance()
+        return ctx.normalizer.normalize(query, k=k, domain_filter=domain_filter)
 
 
 class CodexContext:

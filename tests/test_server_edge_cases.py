@@ -20,17 +20,20 @@ from coreason_codex.server import app
 
 @pytest.fixture
 def mock_codex_context() -> Generator[Tuple[MagicMock, MagicMock], None, None]:
-    # Patch where CodexContext is imported in server.py
-    with patch("coreason_codex.server.CodexContext") as mock_ctx:
-        # Setup the mock instance
-        mock_instance = MagicMock()
-        mock_ctx.get_instance.return_value = mock_instance
+    # Setup the mock instance
+    mock_instance = MagicMock()
+    mock_normalizer = MagicMock()
+    mock_instance.normalizer = mock_normalizer
 
-        # Setup normalizer
-        mock_normalizer = MagicMock()
-        mock_instance.normalizer = mock_normalizer
+    # Patch in pipeline (for CodexPipeline)
+    with patch("coreason_codex.pipeline.CodexContext") as mock_ctx_pipeline:
+        mock_ctx_pipeline.get_instance.return_value = mock_instance
 
-        yield mock_ctx, mock_normalizer
+        # Patch in server (for lifespan)
+        with patch("coreason_codex.server.CodexContext") as mock_ctx_server:
+            mock_ctx_server.get_instance.return_value = mock_instance
+
+            yield mock_ctx_server, mock_normalizer
 
 
 def test_invalid_payload(mock_codex_context: Tuple[MagicMock, MagicMock]) -> None:
@@ -110,7 +113,17 @@ def test_redundant_workflow(mock_codex_context: Tuple[MagicMock, MagicMock]) -> 
         assert r1.json() == {"status": "ready"}
 
         # 2. Search
-        r2 = client.post("/search", json={"query": "aspirin", "limit": 5})
+        r2 = client.post(
+            "/search",
+            json={
+                "request": {"query": "aspirin", "limit": 5},
+                "context": {
+                    "user_id": "test",
+                    "roles": [],
+                    "metadata": {},
+                },
+            },
+        )
         assert r2.status_code == 200
         assert isinstance(r2.json(), list)
 

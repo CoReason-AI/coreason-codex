@@ -8,17 +8,19 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
+import os
 import sys
 from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
+import uvicorn
+from coreason_identity.models import UserContext
+from coreason_identity.types import SecretStr
 from loguru import logger
 
 from coreason_codex import __version__
-from coreason_codex.build import CodexBuilder
-from coreason_codex.embedders import SapBertEmbedder
-from coreason_codex.pipeline import codex_normalize, initialize
+from coreason_codex.pipeline import CodexPipeline, initialize
 
 app = typer.Typer(
     name="coreason-codex",
@@ -39,18 +41,12 @@ def build(
     logger.info(f"Starting Codex Build from {source} to {output}")
 
     try:
-        builder = CodexBuilder(source, output)
+        system_context = UserContext(
+            user_id=SecretStr("cli-user"), roles=["system"], metadata={"source": "cli"}
+        )
 
-        # 1. Build Vocab
-        builder.build_vocab()
-
-        # 2. Build Vectors
-        logger.info(f"Initializing embedder on {device}...")
-        embedder = SapBertEmbedder(device=device)
-        builder.build_vectors(embedder)
-
-        # 3. Generate Manifest
-        builder.generate_manifest()
+        pipeline = CodexPipeline()
+        pipeline.run(source, output, device, context=system_context)
 
         logger.info("Codex Build Completed Successfully.")
 
@@ -71,11 +67,43 @@ def normalize(
     """
     try:
         initialize(str(pack))
-        results = codex_normalize(text, domain_filter=domain)
+        system_context = UserContext(
+            user_id=SecretStr("cli-user"), roles=["system"], metadata={"source": "cli"}
+        )
+
+        pipeline = CodexPipeline()
+        results = pipeline.search(text, k=10, domain_filter=domain, context=system_context)
         for match in results:
             typer.echo(match.model_dump_json(indent=2))
     except Exception:
         logger.exception("Normalization Failed")
+        sys.exit(1)
+
+
+@app.command()
+def serve(
+    host: str = "0.0.0.0",
+    port: int = 8000,
+    pack: Annotated[Path, typer.Option("--pack", "-p", help="Path to Codex Pack directory", exists=True)] = Path(
+        "./data/codex_pack"
+    ),
+) -> None:
+    """
+    Start the Codex Server.
+    """
+    try:
+        os.environ["CODEX_PACK_PATH"] = str(pack)
+
+        system_context = UserContext(
+            user_id=SecretStr("cli-user"), roles=["system"], metadata={"source": "cli"}
+        )
+        logger.info(
+            "Starting Codex Server", user_id=system_context.user_id.get_secret_value()
+        )
+
+        uvicorn.run("coreason_codex.server:app", host=host, port=port, reload=False)
+    except Exception:
+        logger.exception("Server Failed")
         sys.exit(1)
 
 

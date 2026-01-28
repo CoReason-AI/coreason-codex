@@ -8,13 +8,17 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_codex
 
+from pathlib import Path
 from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from coreason_identity.models import UserContext
+from coreason_identity.types import SecretStr
 from coreason_codex.pipeline import (
     CodexContext,
+    CodexPipeline,
     codex_check_relationship,
     codex_get_descendants,
     codex_normalize,
@@ -98,3 +102,26 @@ def test_codex_check_relationship_proxy(mock_context: Any) -> None:
     res = codex_check_relationship(1, 2, "Rel")
     assert res is True
     mock_context.crosswalker.check_relationship.assert_called_with(1, 2, "Rel")
+
+
+def test_codex_pipeline_run(mock_context: Any) -> None:
+    # Test run method calls build
+    with patch("coreason_codex.pipeline.CodexBuilder") as MockBuilder:
+        mock_builder = MockBuilder.return_value
+        context = UserContext(user_id=SecretStr("u"), roles=[])
+
+        pipeline = CodexPipeline()
+        pipeline.run(Path("s"), Path("o"), context=context)
+
+        MockBuilder.assert_called_with(Path("s"), Path("o"))
+        mock_builder.build_graph.assert_called_with(context=context, device="cpu")
+
+
+def test_codex_pipeline_search(mock_context: Any) -> None:
+    # Test search method calls normalizer
+    context = UserContext(user_id=SecretStr("u"), roles=[])
+    pipeline = CodexPipeline()
+
+    with patch.object(mock_context.normalizer, "normalize", return_value=[]) as mock_norm:
+        pipeline.search("query", k=5, context=context)
+        mock_norm.assert_called_with("query", k=5, domain_filter=None)
