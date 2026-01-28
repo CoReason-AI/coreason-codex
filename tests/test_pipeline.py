@@ -13,9 +13,9 @@ from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from coreason_identity.models import UserContext
 from coreason_identity.types import SecretStr
+
 from coreason_codex.pipeline import (
     CodexContext,
     CodexPipeline,
