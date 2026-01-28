@@ -60,7 +60,7 @@ class CodexBuilder:
 
         logger.info(
             "Building knowledge graph",
-            user_id=context.user_id.get_secret_value(),
+            user_id=context.user_id,
             path=str(self.source_dir),
         )
 

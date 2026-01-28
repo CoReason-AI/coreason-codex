@@ -96,8 +96,10 @@ def test_search_endpoint(mock_codex_context: Tuple[MagicMock, MagicMock]) -> Non
         "request": {"query": "query text", "limit": 5},
         "context": {
             "user_id": "test-user",
-            "roles": ["tester"],
-            "metadata": {"source": "test"},
+            "email": "test@coreason.ai",
+            "groups": ["tester"],
+            "scopes": [],
+            "claims": {"source": "test"},
         },
     }
 

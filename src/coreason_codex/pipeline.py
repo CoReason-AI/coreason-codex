@@ -52,7 +52,7 @@ class CodexPipeline:
         if context is None:
             raise ValueError("UserContext is required for pipeline search")
 
-        logger.info("Executing graph search", user_id=context.user_id.get_secret_value(), k=k)
+        logger.info("Executing graph search", user_id=context.user_id, k=k)
 
         ctx = CodexContext.get_instance()
         return ctx.normalizer.normalize(query, k=k, domain_filter=domain_filter)

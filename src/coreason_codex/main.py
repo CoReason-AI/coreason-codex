@@ -16,7 +16,6 @@ from typing import Annotated, Optional
 import typer
 import uvicorn
 from coreason_identity.models import UserContext
-from coreason_identity.types import SecretStr
 from loguru import logger
 
 from coreason_codex import __version__
@@ -41,7 +40,13 @@ def build(
     logger.info(f"Starting Codex Build from {source} to {output}")
 
     try:
-        system_context = UserContext(user_id=SecretStr("cli-user"), roles=["system"], metadata={"source": "cli"})
+        system_context = UserContext(
+            user_id="cli-user",
+            email="cli@coreason.ai",
+            groups=["system"],
+            scopes=[],
+            claims={"source": "cli"},
+        )
 
         pipeline = CodexPipeline()
         pipeline.run(source, output, device, context=system_context)
@@ -65,7 +70,13 @@ def normalize(
     """
     try:
         initialize(str(pack))
-        system_context = UserContext(user_id=SecretStr("cli-user"), roles=["system"], metadata={"source": "cli"})
+        system_context = UserContext(
+            user_id="cli-user",
+            email="cli@coreason.ai",
+            groups=["system"],
+            scopes=[],
+            claims={"source": "cli"},
+        )
 
         pipeline = CodexPipeline()
         results = pipeline.search(text, k=10, domain_filter=domain, context=system_context)
@@ -90,8 +101,14 @@ def serve(
     try:
         os.environ["CODEX_PACK_PATH"] = str(pack)
 
-        system_context = UserContext(user_id=SecretStr("cli-user"), roles=["system"], metadata={"source": "cli"})
-        logger.info("Starting Codex Server", user_id=system_context.user_id.get_secret_value())
+        system_context = UserContext(
+            user_id="cli-user",
+            email="cli@coreason.ai",
+            groups=["system"],
+            scopes=[],
+            claims={"source": "cli"},
+        )
+        logger.info("Starting Codex Server", user_id=system_context.user_id)
 
         uvicorn.run("coreason_codex.server:app", host=host, port=port, reload=False)
     except Exception:

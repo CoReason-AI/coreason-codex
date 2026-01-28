@@ -14,7 +14,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from coreason_identity.models import UserContext
-from coreason_identity.types import SecretStr
 
 from coreason_codex.pipeline import (
     CodexContext,
@@ -108,7 +107,7 @@ def test_codex_pipeline_run(mock_context: Any) -> None:
     # Test run method calls build
     with patch("coreason_codex.pipeline.CodexBuilder") as MockBuilder:
         mock_builder = MockBuilder.return_value
-        context = UserContext(user_id=SecretStr("u"), roles=[])
+        context = UserContext(user_id="u", email="u@t.com", groups=[], scopes=[], claims={})
 
         pipeline = CodexPipeline()
         pipeline.run(Path("s"), Path("o"), context=context)
@@ -119,7 +118,7 @@ def test_codex_pipeline_run(mock_context: Any) -> None:
 
 def test_codex_pipeline_search(mock_context: Any) -> None:
     # Test search method calls normalizer
-    context = UserContext(user_id=SecretStr("u"), roles=[])
+    context = UserContext(user_id="u", email="u@t.com", groups=[], scopes=[], claims={})
     pipeline = CodexPipeline()
 
     with patch.object(mock_context.normalizer, "normalize", return_value=[]) as mock_norm:

@@ -119,8 +119,10 @@ def test_redundant_workflow(mock_codex_context: Tuple[MagicMock, MagicMock]) -> 
                 "request": {"query": "aspirin", "limit": 5},
                 "context": {
                     "user_id": "test",
-                    "roles": [],
-                    "metadata": {},
+                    "email": "test@coreason.ai",
+                    "groups": [],
+                    "scopes": [],
+                    "claims": {},
                 },
             },
         )
