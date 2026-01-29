@@ -12,12 +12,13 @@ import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, List, Optional, cast
 
+from coreason_identity.models import UserContext
 from fastapi import FastAPI
 from loguru import logger
 from pydantic import BaseModel
 
 from coreason_codex.normalizer import CodexNormalizer
-from coreason_codex.pipeline import CodexContext
+from coreason_codex.pipeline import CodexContext, CodexPipeline
 from coreason_codex.schemas import CodexMatch
 
 
@@ -58,6 +59,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(title="Coreason Codex API", lifespan=lifespan)
 
 
+class CodexServer:
+    def __init__(self) -> None:
+        self.pipeline = CodexPipeline()
+
+    def handle_request(self, request: SearchRequest, context: UserContext) -> List[CodexMatch]:
+        """
+        Handles the search request with identity context.
+        """
+        # Pass to pipeline search
+        return self.pipeline.search(request.query, k=request.limit, context=context)
+
+
+codex_server = CodexServer()
+
+
 @app.get("/health")
 async def health_check() -> dict[str, str]:
     """
@@ -76,9 +92,8 @@ async def normalize(request: NormalizationRequest) -> List[CodexMatch]:
 
 
 @app.post("/search", response_model=List[CodexMatch])
-async def search(request: SearchRequest) -> List[CodexMatch]:
+async def search(request: SearchRequest, context: UserContext) -> List[CodexMatch]:
     """
     Expose vector search to find nearest concepts.
     """
-    normalizer = cast(CodexNormalizer, app.state.normalizer)
-    return normalizer.normalize(request.query, k=request.limit)
+    return codex_server.handle_request(request, context)
